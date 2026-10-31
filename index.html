@@ -328,10 +328,7 @@
         <div class="speed-control" id="modeCtl" style="display:none"><span>Voz:</span><select id="modeSel" aria-label="Voz a executar"></select></div>
         <div class="speed-control" id="keyCtl" style="display:none" title="Tom em que o hino é tocado (o app escolhe o mais fácil no violão)"><span>Tom:</span><select id="keySel" aria-label="Tom"></select></div>
         <div class="speed-control" id="harmCtl" style="display:none" title="Simples: acordes básicos. Melhor encaixe: o acorde que combina melhor com o soprano e o baixo de cada tempo. Cantoral: as cifras do livro (hinos com cifra disponível)"><span>Harmonia:</span><select id="harmSel" aria-label="Harmonia"><option value="0">Simples</option><option value="1">Melhor encaixe</option><option value="2">Cantoral (livro)</option></select></div>
-        <div class="speed-control" id="styleCtl" style="display:none" title="Básico: melodia + baixo. Profissional: dedilhado (fingerstyle simplificado) com notas do acorde entre o baixo e a melodia"><span>Estilo:</span><select id="styleSel" aria-label="Estilo"><option value="basic">Fingerstyle · básico</option><option value="pro">Fingerstyle · profissional (dedilhado)</option><option value="acomp">Acompanhamento (batida / dedilhado)</option></select></div>
-        <div class="speed-control" id="accCtl" style="display:none" title="Batida: acordes tocados com a mão direita (golpes). Dedilhado: acordes tocados corda a corda"><span>Ritmo:</span><select id="accSel" aria-label="Ritmo do acompanhamento"><option value="bat">Batida</option><option value="ded">Dedilhado</option></select></div>
-        <div class="speed-control" id="contCtl" style="display:none" title="Simples: um movimento por tempo do compasso (6/8 = 6 movimentos). Subdividida: 1 e 2 e 3 e... (o dobro de movimentos). Mista: começo simples e fim subdividido"><span>Contagem:</span><select id="contSel" aria-label="Contagem do acompanhamento"><option value="simple">Simples</option><option value="sub">Subdividida</option><option value="mix">Mista</option></select></div>
-        <div class="speed-control" id="bgCtl" style="display:none" title="Toca só o soprano ao fundo, para você ouvir o acompanhamento junto com o canto"><span>Soprano ao fundo:</span><select id="bgSel" aria-label="Soprano ao fundo"><option value="flute">Flauta</option><option value="violin">Violino</option><option value="harmonium">Harmônio</option><option value="violao">Violão</option><option value="off">Desligado</option></select></div>
+        <div class="speed-control" id="styleCtl" style="display:none" title="Básico: melodia + baixo. Profissional: dedilhado (fingerstyle simplificado) com notas do acorde entre o baixo e a melodia"><span>Estilo:</span><select id="styleSel" aria-label="Estilo"><option value="basic">Fingerstyle · básico</option><option value="pro">Fingerstyle · profissional (dedilhado)</option></select></div>
             <div class="volume-control">
                 <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#9aa0d4" stroke-width="2"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/></svg>
                 <input type="range" class="volume-slider" id="volumeSlider" min="0" max="100" value="70">
@@ -1160,12 +1157,48 @@ function vgPlan(src,t){
             }
         });
     }
-    vgOpenStrings(out);
+    vgReachRepair(out);
+    vgOpenStrings(out); vgOpenStrings(out);
     out.sort((a,b)=>a.startTime-b.startTime);
     return {notes:out,tl,pieces,Vs};
 }
 // Usa a corda solta sempre que ela dá exatamente a mesma nota e nenhuma outra nota está soando nessa corda ao mesmo tempo
 // (ex.: Mi agudo na corda Si, casa 5 -> Mi solta; Si na corda Sol, casa 4 -> Si solta).
+// ---- alcance da mão esquerda: notas que soam juntas não podem ficar longe demais (até 3 casas nas primeiras posições, 4 acima da 8ª) ----
+function vgReachOver(frets){
+    const fs=frets.filter(f=>f>0); if(fs.length<2) return 0;
+    const lo=Math.min(...fs), sp=Math.max(...fs)-lo;
+    return Math.max(0,sp-(lo>=8?4:3));
+}
+function vgReachRepair(notes){
+    const rank=n=>({0:0,3:1,2:2}[n.track|0]);
+    const ns=notes.filter(n=>n.fix).sort((a,b)=>((rank(a)??3)-(rank(b)??3))||a.startTime-b.startTime);
+    ns.forEach(n=>{
+        const ov=notes.filter(m=>m!==n&&m.fix&&m.startTime<n.endTime-0.01&&m.endTime>n.startTime+0.01);
+        const frs=ov.map(m=>m.fix.fret);
+        if(!vgReachOver([n.fix.fret,...frs])) return;
+        let best=null,bc=1e9;
+        vgOpts(n.midi).forEach(o=>{
+            if(ov.some(m=>m.fix.s===o.s)) return;                     // a corda não pode estar ocupada
+            const e=vgReachOver([o.fret,...frs]);
+            const c=e*10+.01*o.fret+(o.s===n.fix.s?0:.2);
+            if(c<bc){ bc=c; best=o; }
+        });
+        if(best&&(best.s!==n.fix.s||best.fret!==n.fix.fret)) n.fix={s:best.s,fret:best.fret};
+    });
+}
+// ---- corda solta no lugar da casa apertada, sempre que dá a mesma nota e a corda está livre (vale para qualquer vozes/arranjo) ----
+function vgOpenInAssign(items,res){
+    const info=new Map(items.map(g=>[g.key,g])), ent=[...res.entries()];
+    ent.forEach(([k,a])=>{
+        if(!a||!(a.fret>0)) return; const g=info.get(k); if(!g) return;
+        const p=guitarPitch(g.midi);
+        for(let s=0;s<6;s++){ if(GUITAR_OPEN[s]!==p) continue;
+            const busy=ent.some(([k2,b])=>{ if(k2===k||b.s!==s) return false; const g2=info.get(k2); return g2&&g2.u<g.e-0.01&&g2.e>g.u+0.01; });
+            if(!busy){ a.s=s; a.fret=0; break; }
+        }
+    });
+}
 function vgOpenStrings(notes){
     const ns=notes.filter(n=>n.fix&&n.fix.fret>0).sort((a,b)=>a.startTime-b.startTime);
     const busy=(s,n)=>notes.some(m=>m!==n&&m.fix&&m.fix.s===s&&m.startTime<n.endTime-0.01&&m.endTime>n.startTime+0.01);
@@ -1196,129 +1229,6 @@ function vgAttachCifra(src,n){
     ev.forEach((c,i)=>{ const e=i+1<ev.length?ev[i+1].s:end, last=prog[prog.length-1]; if(last&&last.root===c.root&&last.q===c.q) last.e=e; else prog.push({s:c.s,e,root:c.root,q:c.q}); });
     src.anC={tonic:src.anB.tonic,minor:src.anB.minor,prog};
 }
-// ======================== ACOMPANHAMENTO: batida / dedilhado ========================
-// Os movimentos seguem a contagem do compasso: U = nº de movimentos por compasso (6/8 = 6 colcheias, 4/4 = 4 tempos, 3/4 = 3...).
-//  · Simples: 1 movimento por tempo · Subdividida: "1 e 2 e 3 e..." (o dobro) · Mista: 1ª metade simples + 2ª metade subdividida.
-// Dedilhado: P = polegar (sempre o baixo do acorde) · I = indicador (3ª corda, sol) · M = médio (2ª, si) · A = anelar (1ª, mi agudo)
-// Batida: d = para baixo · u = para cima
-function vgMeter(src){
-    const c={}; src.measures.forEach(m=>{ const k=(m.beats||4)+'|'+(m.bt||4); c[k]=(c[k]||0)+1; });
-    const k=Object.keys(c).sort((a,b)=>c[b]-c[a])[0]||'4|4', [b,t]=k.split('|').map(Number);
-    const U=t===2?b*2:b, uq=t===2?1:4/t;        // 2/2 e 3/2 contam em semínimas
-    return {U,uq,barQ:U*uq,beats:b,bt:t};
-}
-const ACC_PIMAMI=[[0],[1],[2],[3],[2],[1]];
-const accRep=(a,n)=>{ let r=[]; for(let i=0;i<n;i++) r=r.concat(a); return r; };
-function accHalf(U){ return U%6===0?U/2:(U===9?6:Math.ceil(U/2)); }
-function accDedSimple(U){
-    if(U===2) return [[0],[1,2,3]];
-    if(U===3) return [[0],[1,2,3],[1,2,3]];
-    if(U===4) return [[0],[1],[2],[3]];
-    if(U%6===0) return accRep(ACC_PIMAMI,U/6);
-    if(U===9) return accRep([[0],[1],[2]],3);
-    return Array.from({length:U},(_,i)=>[i%4]);
-}
-function accDedSub(U){
-    const N=U*2;
-    if(U===2) return [[0],[1],[2],[3]];
-    if(U===4) return accRep([[0],[1],[2],[3]],2);
-    if(N%6===0) return accRep(ACC_PIMAMI,N/6);
-    return Array.from({length:N},(_,i)=>[i%4]);
-}
-// retorna [{pos (em unidades do compasso), d:[alvos]}]
-function accDed(U,cont){
-    const si=accDedSimple(U), sb=accDedSub(U), out=[];
-    if(cont==='simple') si.forEach((d,i)=>out.push({pos:i,d}));
-    else if(cont==='sub') sb.forEach((d,i)=>out.push({pos:i/2,d}));
-    else { const H=accHalf(U); si.forEach((d,i)=>{ if(i<H) out.push({pos:i,d}); }); sb.forEach((d,j)=>{ if(j>=2*H) out.push({pos:j/2,d}); }); }
-    return out;
-}
-function accBatSimple(U){
-    if(U===2) return ['d','d'];
-    if(U===3) return ['d','d','u'];
-    if(U===4) return ['d','d','u','d'];
-    return Array.from({length:U},(_,i)=>i%3===2?'u':'d');       // 6/8: ↓ ↓ ↑ ↓ ↓ ↑
-}
-// retorna [{pos, k:'d'|'u'}]
-function accBat(U,cont){
-    const si=accBatSimple(U), out=[];
-    if(cont==='simple') si.forEach((k,i)=>out.push({pos:i,k}));
-    else if(cont==='sub') for(let i=0;i<U;i++){ out.push({pos:i,k:'d'},{pos:i+.5,k:'u'}); }
-    else {
-        const H=accHalf(U); si.forEach((k,i)=>{ if(i<H) out.push({pos:i,k}); });
-        for(let u=H;u<U;u++){
-            if(U<=4){ const st=((u-H)%2===0)?'u':'d', op=st==='u'?'d':'u'; [st,op,st,op].forEach((k,j)=>out.push({pos:u+j*.25,k})); }   // 1 tempo vira 4 semicolcheias
-            else { out.push({pos:u,k:'d'},{pos:u+.5,k:'u'}); }                                                                         // 1 colcheia vira 2 semicolcheias
-        }
-    }
-    return out;
-}
-const ACC_CONT={simple:'simples',sub:'subdividida',mix:'mista'};
-function vgAccToast(){ const a=state.src&&state.src.accInfo; return a?('Acompanhamento: '+(a.kind?'dedilhado':'batida')+' · '+ACC_CONT[a.cont]+' ('+a.beats+'/'+a.bt+')'):'Acompanhamento'; }
-async function vgLoadBg(name){
-    if(!name||name==='off'||name==='violao'){ return; }
-    if(BG.name===name&&BG.smp) return;
-    BG.name=name; BG.smp=null;
-    let out; try{ out=await getOutChain(); }catch(e){ out=Tone.getDestination(); }
-    for(const root of ['https://nbrosowsky.github.io/tonejs-instruments/samples/','https://cdn.jsdelivr.net/gh/nbrosowsky/tonejs-instruments@master/samples/']){
-        try{ const smp=await loadPianoFrom(root+name+'/',out); if(BG.name===name){ BG.smp=smp; applyVolume(); } else { try{smp.dispose();}catch(e){} } return; }catch(e){}
-    }
-}
-function vgPlanAcomp(src,t){
-    const kind=state.acc==='ded'?1:0, cont=state.cont, M=vgMeter(src), pat=kind?accDed(M.U,cont):accBat(M.U,cont);
-    src.accInfo={kind,cont,beats:M.beats,bt:M.bt};
-    const prog=src.an.prog, ms=src.measures, rootOf=c=>((c.root+t)%12+12)%12;
-    // 1) forma de cada acorde: com baixo (e, no dedilhado, com as 3 cordas agudas), perto da forma anterior
-    const C=prog.map(c=>{
-        let l=vgCands(rootOf(c),c.q).filter(V=>V.strs.length>=4&&V.strs[0].s<=2&&(!kind||V.strs.filter(x=>x.s>=3).length===3));
-        if(!l.length) l=vgCands(rootOf(c),c.q).filter(V=>V.strs.length>=4&&V.strs[0].s<=2);
-        if(!l.length) l=vgCands(rootOf(c),c.q); return l; });
-    const tc=(a,b)=>a.key===b.key?0:.2+.2*Math.abs(a.cen-b.cen);
-    let prev=C[0].map(V=>V.diff); const from=[null];
-    for(let i=1;i<C.length;i++){
-        const cur=[], fr=[];
-        C[i].forEach((V,k)=>{ let bv=1e9,bj=0; C[i-1].forEach((U,j)=>{ const v=prev[j]+tc(U,V); if(v<bv){ bv=v; bj=j; } }); cur[k]=bv+V.diff; fr[k]=bj; });
-        prev=cur; from.push(fr);
-    }
-    let kk=0; for(let j=1;j<prev.length;j++) if(prev[j]<prev[kk]) kk=j;
-    const Vs=new Array(prog.length); for(let i=prog.length-1;i>=0;i--){ Vs[i]=C[i][kk]; if(i>0) kk=from[i][kk]; }
-    const chordAt=tm=>{ let k=0; for(let i=0;i<prog.length;i++){ if(prog[i].s<=tm+0.001) k=i; else break; } return k; };
-    // 2) movimentos do padrão, compasso a compasso (a anacruse cai no fim do padrão)
-    const evs=[]; let ph=0;
-    ms.forEach((m,i)=>{
-        const Lu=(m.q||M.barQ)/M.uq, d=m.e-m.s; if(d<=0) return;
-        ph=(i===0&&Lu<M.U-1e-6)?M.U-Lu:0;
-        pat.forEach(p=>{ const u=p.pos-ph; if(u<-1e-6||u>=Lu-1e-6) return; evs.push(Object.assign({t:m.s+u/Lu*d,pos:p.pos},p.d?{d:p.d}:{k:p.k})); });
-    });
-    // troca de acorde fora dos movimentos do padrão: entra o baixo (dedilhado) ou um golpe para baixo (batida)
-    prog.forEach(c=>{ if(!evs.some(e=>Math.abs(e.t-c.s)<0.08)) evs.push(kind?{t:c.s,pos:0,d:[0]}:{t:c.s,pos:0,k:'d'}); });
-    evs.sort((a,b)=>a.t-b.t);
-    const out=[];
-    const add=(V,s,tm,vel,sus)=>{ const st=V.strs.find(x=>x.s===s); if(!st) return; out.push({midi:st.pitch,startTime:tm,endTime:tm+sus,duration:sus,velocity:Math.min(.95,vel),track:s<=2?3:2,acc:true,fix:{s:st.s,fret:st.fret}}); };
-    const nearStr=(V,target)=>{ if(target===0) return V.strs[0].s; const want=target+2, ok=V.strs.filter(x=>x.s>=3); if(!ok.length) return V.strs[V.strs.length-1].s; return ok.slice().sort((a,b)=>Math.abs(a.s-want)-Math.abs(b.s-want)||b.s-a.s)[0].s; };
-    evs.forEach((e,i)=>{
-        const ci=chordAt(e.t), c=prog[ci], V=Vs[ci], nextT=i+1<evs.length?evs[i+1].t:c.e;
-        const gap=Math.max(0.1,Math.min(nextT,c.e)-e.t), sus=Math.max(0.12,Math.min(gap*1.6,c.e-e.t+0.05));
-        if(e.d){                                           // dedilhado: P = baixo · I, M, A = cada dedo na sua corda
-            const ss=[...new Set(e.d.map(g=>nearStr(V,g)))].sort((a,b)=>a-b);
-            ss.forEach((s,j)=>add(V,s,e.t+j*0.014,s<=2?.74:.58,sus));
-        } else if(e.k==='d'){                              // para baixo: todas as cordas do acorde, do grave ao agudo
-            const base=e.pos===0?.78:(Number.isInteger(e.pos)?.66:.56);
-            V.strs.forEach((x,j)=>add(V,x.s,e.t+j*0.009,base*(j===0?1.1:1),sus));
-        } else {                                           // para cima: só as cordas mais agudas, do agudo ao grave
-            V.strs.filter(x=>x.s>=2).reverse().forEach((x,j)=>add(V,x.s,e.t+j*0.008,.44,sus));
-        }
-    });
-    // a mesma corda não soa duas notas ao mesmo tempo
-    const byS={}; out.forEach(n=>{ (byS[n.fix.s]=byS[n.fix.s]||[]).push(n); });
-    Object.values(byS).forEach(a=>{ a.sort((x,y)=>x.startTime-y.startTime); a.forEach((n,i)=>{ const nx=a[i+1]; if(nx&&nx.startTime<n.endTime-0.005){ n.endTime=Math.max(n.startTime+0.05,nx.startTime-0.01); n.duration=n.endTime-n.startTime; } }); });
-    vgOpenStrings(out);
-    // soprano ao fundo (só para ouvir o acompanhamento junto com o canto)
-    if(state.bg!=='off') src.notes.filter(n=>(n.track|0)===0&&!n.dup).forEach(n=>out.push({midi:Math.max(0,Math.min(127,n.midi+t)),startTime:n.startTime,endTime:n.endTime,duration:n.duration,velocity:Math.min(.85,(n.velocity||.7)*.9),track:0,bg:true}));
-    out.sort((a,b)=>a.startTime-b.startTime);
-    const tl=[]; prog.forEach((c,i)=>{ const l=tl[tl.length-1], r=rootOf(c); if(!(l&&l.root===r&&l.q===c.q&&l.v.key===Vs[i].key)) tl.push({t:c.s,root:r,q:c.q,v:Vs[i]}); });
-    return {notes:out,tl};
-}
 function vgNotesFor(src,mode,t){
     const mk=(n,dm)=>({midi:Math.max(0,Math.min(127,n.midi+dm)),startTime:n.startTime,endTime:n.endTime,duration:n.duration,velocity:n.velocity,track:n.track|0});
     const out=[];
@@ -1346,7 +1256,7 @@ async function vgRebuild(keep){
     const t=!satb?0:(kp==='auto'?auto:kp==='orig'?0:vgBestT(src,mode,kp));
     state.t=t;
     let notes, tl=[];
-    if(satb&&mode==='violao'){ const pl=(state.style==='acomp')?vgPlanAcomp(src,t):vgPlan(src,t); notes=pl.notes; tl=pl.tl; if(state.style==='acomp'&&state.bg!=='off'&&state.bg!=='violao') vgLoadBg(state.bg); }
+    if(satb&&mode==='violao'){ const pl=vgPlan(src,t); notes=pl.notes; tl=pl.tl; }
     else { notes=vgNotesFor(src,mode,t); if(satb&&mode==='all') tl=src.an.prog.map(c=>({t:c.s,root:((c.root+t)%12+12)%12,q:c.q})); }
     window.vgChordTL=tl;
     if(satb){
@@ -1357,13 +1267,12 @@ async function vgRebuild(keep){
     }
     const fl=(satb&&mode==='violao');
     document.getElementById('styleCtl').style.display=fl?'flex':'none';
-    ['accCtl','contCtl','bgCtl'].forEach(id=>{ document.getElementById(id).style.display=(fl&&state.style==='acomp')?'flex':'none'; });
     const was=state.isPlaying, tm=state.currentTime;
     if(was) pausePlayback();
     await applyNotes(notes,src.duration,{fromSrc:true,keepTime:keep?tm:null});
     if(was) startPlayback();
 }
-function vgModeUI(show){ document.getElementById('modeCtl').style.display=show?'flex':'none'; const sa=show&&state.src&&state.src.an?'flex':'none'; document.getElementById('keyCtl').style.display=sa; document.getElementById('harmCtl').style.display=sa; if(!sa){ ['styleCtl','accCtl','contCtl','bgCtl'].forEach(id=>{ document.getElementById(id).style.display='none'; }); } }
+function vgModeUI(show){ document.getElementById('modeCtl').style.display=show?'flex':'none'; const sa=show&&state.src&&state.src.an?'flex':'none'; document.getElementById('keyCtl').style.display=sa; document.getElementById('harmCtl').style.display=sa; if(!sa){ ['styleCtl'].forEach(id=>{ document.getElementById(id).style.display='none'; }); } }
 function vgBuildMode(){
     const src=state.src, ids=[...new Set(src.notes.map(n=>n.track|0))].sort((a,b)=>a-b), satb=!!src.an;
     let h=satb?'<option value="violao">🎸 Violão: melodia + baixo + acordes</option>':'';
@@ -1376,19 +1285,16 @@ function vgBuildMode(){
         document.getElementById('keySel').innerHTML=k;
     }
     document.getElementById('harmSel').value=state.cant?'2':state.harm?'1':'0'; document.getElementById('styleSel').value=state.style;
-    document.getElementById('accSel').value=state.acc; document.getElementById('contSel').value=state.cont; document.getElementById('bgSel').value=state.bg;
+    
     vgModeUI(satb||ids.length>1);
 }
 document.getElementById('modeSel').addEventListener('change',e=>{ const v=e.target.value; state.mode=(v==='violao'||v==='all')?v:parseInt(v); vgRebuild(true); });
-try{ const hv=localStorage.getItem('vgHarm'); state.harm=hv==='1'; state.cant=hv==='2'; const sv=localStorage.getItem('vgStyle'); state.style=(sv==='pro'||sv==='acomp')?sv:'basic'; const a=localStorage.getItem('vgAcc'); state.acc=a==='ded'?'ded':'bat'; const p=localStorage.getItem('vgCont'); state.cont=(p==='sub'||p==='mix')?p:'simple'; const b=localStorage.getItem('vgBg'); state.bg=['off','flute','violin','harmonium','violao'].includes(b)?b:'flute'; }catch(e){}
+try{ const hv=localStorage.getItem('vgHarm'); state.harm=hv==='1'; state.cant=hv==='2'; const sv=localStorage.getItem('vgStyle'); state.style=sv==='pro'?'pro':'basic'; const a=localStorage.getItem('vgAcc'); state.acc=a==='ded'?'ded':'bat'; const p=localStorage.getItem('vgCont'); state.cont=(p==='sub'||p==='mix')?p:'simple'; const b=localStorage.getItem('vgBg'); state.bg=['off','flute','violin','harmonium','violao'].includes(b)?b:'flute'; }catch(e){}
 document.getElementById('styleSel').addEventListener('change',async e=>{
-    const v=e.target.value; state.style=v==='pro'?'pro':v==='acomp'?'acomp':'basic'; try{ localStorage.setItem('vgStyle',state.style); }catch(x){}
+    const v=e.target.value; state.style=v==='pro'?'pro':'basic'; try{ localStorage.setItem('vgStyle',state.style); }catch(x){}
     await vgRebuild(true);
-    toast(state.style==='acomp'?vgAccToast():state.style==='pro'?'Fingerstyle profissional: dedilhado com notas internas do acorde':'Fingerstyle básico: melodia + baixo','success');
+    toast(state.style==='pro'?'Fingerstyle profissional: dedilhado com notas internas do acorde':'Fingerstyle básico: melodia + baixo','success');
 });
-document.getElementById('accSel').addEventListener('change',async e=>{ state.acc=e.target.value==='ded'?'ded':'bat'; try{ localStorage.setItem('vgAcc',state.acc); }catch(x){} await vgRebuild(true); toast(vgAccToast(),'success'); });
-document.getElementById('contSel').addEventListener('change',async e=>{ const p=e.target.value; state.cont=(p==='sub'||p==='mix')?p:'simple'; try{ localStorage.setItem('vgCont',state.cont); }catch(x){} await vgRebuild(true); toast(vgAccToast(),'success'); });
-document.getElementById('bgSel').addEventListener('change',async e=>{ const b=e.target.value; state.bg=['off','flute','violin','harmonium','violao'].includes(b)?b:'flute'; try{ localStorage.setItem('vgBg',state.bg); }catch(x){} await vgRebuild(true); toast(state.bg==='off'?'Soprano ao fundo desligado':'Soprano ao fundo: '+e.target.options[e.target.selectedIndex].text,'success'); });
 document.getElementById('harmSel').addEventListener('change',async e=>{
     const hv=e.target.value; state.harm=hv==='1'; state.cant=hv==='2'; try{ localStorage.setItem('vgHarm',hv); }catch(x){}
     await vgRebuild(true);
@@ -1645,6 +1551,7 @@ function gAssignTimeline(items,tol){
         fr.forEach((g,n)=>res.set(g.key,{s:pick[n].s,fret:pick[n].fret,e:g.e}));
         i=j;
     }
+    vgOpenInAssign(items,res);
     return res;
 }
 let gAssignMap=new Map(), gAssignSrc=null, gAssignLen=-1, gNl=[];
@@ -1868,22 +1775,245 @@ function drawPiano(){
         c.lineTo(gStrX(i,BR),BR); c.stroke(); c.restore();
     });
     for(let i=0;i<6;i++) TX(GSTR_LET[i],gStrX(i,NUT),NUT-30,Math.max(7,Math.min(12,s*21)),gOn[i]?'#fff':'rgba(217,199,160,.7)');
-    // casa apertada (ponto rosa) ou corda solta (anel rosa) — sem dedos, só a posição
-    const rMin=6.5/s;
-    gn.forEach(fg=>{
-        if(fg.fret){
-            const ya=gFretY(fg.fret-1), yb=gFretY(fg.fret), Y=(ya+yb)/2, X=gStrX(fg.s,Y), r=Math.min(12.5,Math.max(8.5,Math.min(13,(yb-ya)*.55),rMin));
-            c.save(); c.shadowColor=G_HOT; c.shadowBlur=24; c.fillStyle=G_HOT; c.beginPath(); c.arc(X,Y,r,0,Math.PI*2); c.fill(); c.restore();
-            c.lineWidth=2.6; c.strokeStyle='#fff'; c.beginPath(); c.arc(X,Y,r,0,Math.PI*2); c.stroke();
+    // --- mão esquerda: forma do acorde + dedos (com limite de alcance humano) ---
+    const voic=chord?(chord.v||chVoicing(chord.root,chord.q)):null;
+    const F=vgHandModel(gn,voic); vgHandStep(F);
+    vgDrawHand(c,false);
+    const hc=G_HOT, rMin=6.5/s;
+    [1,2,3,4].forEach(k=>{
+        const g=F[k]; if(!g) return;
+        const fk=vgHand.f[k], ya=gFretY(g.fret-1), yb=gFretY(g.fret), Y=(ya+yb)/2, r=Math.min(12.5,Math.max(8.5,Math.min(13,(yb-ya)*.62),rMin));
+        const strs=[...g.strs].sort((a,b)=>a-b), sounding=strs.some(si=>gOn[si]&&gOn[si].fret===g.fret);
+        const fillC=sounding?hc:'rgba(255,255,255,.12)', edgeC=sounding?'#fff':'rgba(255,255,255,.38)', numC=sounding?'#fff':'rgba(255,255,255,.62)', glow=sounding?26:0;
+        c.save(); c.globalAlpha=Math.max(.15,fk.p)*(sounding?.9:1);
+        const lift=(g.lift||[]).filter(si=>strs.includes(si)), ghost=si=>{
+            const X=gStrX(si,Y); c.save(); c.globalAlpha=.9; c.strokeStyle='#fff'; c.lineWidth=2; c.setLineDash([3,3]); c.beginPath(); c.arc(X,Y,r*.95,0,Math.PI*2); c.stroke(); c.restore(); };
+        if(g.bar&&strs.length>1){
+            const xa=gStrX(strs[0],Y), xb2=gStrX(strs[strs.length-1],Y), gap=r*1.25;
+            const cuts=lift.map(si=>gStrX(si,Y)).sort((u,v)=>u-v), segs=[]; let from=xa;
+            cuts.forEach(x=>{ if(x-gap>from) segs.push([from,x-gap]); from=x+gap; });
+            if(xb2>from) segs.push([from,xb2]);
+            const solid=(w,col,blur)=>{ c.save(); c.lineCap=lift.length?'butt':'round'; c.strokeStyle=col; c.lineWidth=w; if(blur){ c.shadowColor=hc; c.shadowBlur=blur; }
+                segs.forEach(sg=>{ c.beginPath(); c.moveTo(sg[0],Y); c.lineTo(sg[1],Y); c.stroke(); }); c.restore(); };
+            solid(r*2+4,edgeC,0); solid(r*2,fillC,glow);
+            lift.forEach(ghost);
+            TX(String(k),(xa+xb2)/2,Y,Math.max(8,r*1.25*s),numC);
         } else {
-            const X=gStrX(fg.s,NUT), Y=NUT-15, r=Math.min(11,Math.max(7.5,rMin*.8));
-            c.save(); c.shadowColor=G_HOT; c.shadowBlur=20; c.fillStyle='rgba(255,79,139,.22)'; c.beginPath(); c.arc(X,Y,r,0,Math.PI*2); c.fill(); c.restore();
-            c.lineWidth=3; c.strokeStyle=G_HOT; c.beginPath(); c.arc(X,Y,r,0,Math.PI*2); c.stroke();
+            strs.forEach(si=>{
+                const X=gStrX(si,Y), snd=!!(gOn[si]&&gOn[si].fret===g.fret);
+                if(lift.includes(si)){ ghost(si); TX(String(k),X,Y,Math.max(8,r*1.1*s),'rgba(255,255,255,.85)'); return; }
+                c.save(); c.globalAlpha=Math.max(.15,fk.p)*(snd?.9:1);
+                c.shadowColor=hc; c.shadowBlur=snd?26:0; c.fillStyle=snd?hc:'rgba(255,255,255,.12)'; c.beginPath(); c.arc(X,Y,r,0,Math.PI*2); c.fill(); c.shadowBlur=0;
+                c.lineWidth=snd?3:2; c.strokeStyle=snd?'#fff':'rgba(255,255,255,.38)'; c.stroke();
+                TX(String(k),X,Y,Math.max(8,r*1.25*s),snd?'#fff':'rgba(255,255,255,.62)');
+                c.restore();
+            });
+        }
+        c.restore();
+    });
+    // corda solta tocada: anel rosa no nut
+    gn.forEach(fg=>{
+        if(!fg.fret){
+            const X=gStrX(fg.s,NUT), Y=NUT-14, r=Math.min(12,Math.max(8,rMin*.85));
+            c.save(); c.shadowColor=hc; c.shadowBlur=22; c.fillStyle='rgba(255,79,139,.2)'; c.beginPath(); c.arc(X,Y,r,0,Math.PI*2); c.fill(); c.restore();
+            c.lineWidth=3; c.strokeStyle=hc; c.beginPath(); c.arc(X,Y,r,0,Math.PI*2); c.stroke();
+            TX('0',X,Y,Math.max(8,r*1.3*s),'#fff');
         }
     });
     c.restore();
     c.globalAlpha=1; c.shadowBlur=0; c.textAlign='start'; c.textBaseline='alphabetic';
 }
+
+// ======================== MODELO DA MÃO ========================
+// Cada dedo (1–4) segura uma casa em uma ou mais cordas (várias cordas = pestana).
+// Com acorde: a mão mantém a forma do acorde; se a nota tocada não faz parte da forma, um dedo livre vai buscá-la
+// (ex.: Dó maior segurando e a nota Ré na casa 3 da corda Si → o mindinho aperta a casa 3 da Si).
+//
+// v7: a mão escolhe os dedos de todas as notas juntas (não uma a uma), procurando o arranjo que MENOS desmancha o acorde:
+//  - a nota que já está na forma do acorde usa o dedo do acorde (custo 0);
+//  - se a corda da nota é ocupada por outro dedo do acorde, esse dedo sai e a nota vai para o dedo que está mais perto
+//    (ex.: Dó maior + Lá casa 2 → o médio sai da Ré e vai para a Lá; o anelar, que estava na Lá casa 3, sai do caminho);
+//  - os dedos do acorde que não atrapalham continuam apoiados no lugar (a mão continua "fazendo o acorde");
+//  - a ordem dos dedos respeita as casas (casa maior = dedo de número maior, sem cruzar).
+const vgHmCache=new Map();
+function vgHandModel(gn,voic){
+    if(!voic) return vgHandModelGreedy(gn,voic);
+    const req=[], playedStr=new Set();
+    gn.forEach(n=>{ playedStr.add(n.s); if(n.fret>0) req.push({s:n.s,fret:n.fret}); });
+    req.sort((a,b)=>a.fret-b.fret||a.s-b.s);
+    const key=voic.frets.join(',')+'/'+voic.fing.join(',')+'|'+gn.map(n=>n.s+':'+n.fret).sort().join(',');
+    let res=vgHmCache.get(key);
+    if(res===undefined){ res=vgHandSolveSafe(req,[...playedStr],voic); if(vgHmCache.size>400) vgHmCache.clear(); vgHmCache.set(key,res); }
+    if(!res) return vgHandModelGreedy(gn,voic);
+    gn.forEach(n=>{ n.f=n.fret>0?(res.byStr[n.s]||n.f):0; });
+    const F=[null,null,null,null,null];
+    for(let k=1;k<=4;k++) if(res.F[k]) F[k]={fret:res.F[k].fret,strs:new Set(res.F[k].strs),bar:!!res.F[k].barre&&res.F[k].strs.length>1,lift:res.F[k].lift||[]};
+    return F;
+}
+// devolve {F:[,{fret,strs[]}...], byStr:{corda:dedo}} ou null se não há arranjo possível
+// ---- alcance humano: dedos vizinhos até 2 casas e índice-mindinho até 4. Se a forma do acorde obrigaria a esticar mais,
+// a mão solta os dedos do acorde que não tocam nada; se ainda não der, desarma a forma e segura só as notas tocadas ----
+function vgReachOK(F){
+    const ks=[1,2,3,4].filter(k=>F[k]);
+    for(let a=0;a<ks.length;a++) for(let b=a+1;b<ks.length;b++){ const i=ks[a], j=ks[b]; const lo=Math.min(...ks.map(q=>F[q].fret)); if(Math.abs(F[j].fret-F[i].fret)>(j-i)+((j-i)===1?1:0)+(lo>=8?1:0)) return false; }
+    return true;
+}
+const VG_EMPTY={frets:[-1,-1,-1,-1,-1,-1],fing:[0,0,0,0,0,0],base:0};
+function vgHandSolveSafe(req,played,voic){
+    const r=vgHandSolve(req,played,voic);
+    if(!r||vgReachOK(r.F)) return r;
+    const used=new Set(Object.values(r.byStr)), F2=r.F.map((g,k)=>(g&&used.has(k))?g:null);
+    if(vgReachOK(F2)){ r.F=F2; r.released=true; return r; }
+    const r2=vgHandSolve(req,played,VG_EMPTY);
+    if(r2){ r2.released=true; return r2; }
+    return r;
+}
+function vgHandSolve(req,played,voic){
+    const m=req.length, homes=[null,[],[],[],[]];
+    voic.frets.forEach((f,s)=>{ const k=voic.fing[s]; if(f>0&&k>=1&&k<=4) homes[k].push({s,f}); });
+    const base=voic.base>0?voic.base:(m?req[0].fret:1);
+    const playedSet=new Set(played);
+    // dedo "deslocado": a corda dele no acorde agora é tocada em outra casa (ou solta), então ele ficou sem lugar
+    const displaced=k=>homes[k].length>0&&homes[k].every(h=>playedSet.has(h.s)&&!req.some(r=>r.s===h.s&&r.fret===h.f));
+    const noteCost=(r,k)=>{
+        const hs=homes[k];
+        if(hs.some(h=>h.s===r.s&&h.f===r.fret)) return 0;
+        if(hs.length){
+            let d=1e9; hs.forEach(h=>{ d=Math.min(d,2*Math.abs(h.f-r.fret)+Math.abs(h.s-r.s)); });
+            const away=!hs.some(h=>h.s===r.s);
+            return d+(displaced(k)&&away?3:0);
+        }
+        return 1+2*Math.abs(r.fret-(base+k-1));
+    };
+    let best=null, bc=1e9; const cur=new Array(m);
+    (function go(i,cost){
+        if(cost>=bc) return;
+        if(i===m){
+            // pestana (um dedo em várias cordas) custa um pouco, a não ser que já seja assim no acorde
+            let extra=0; const used={};
+            for(let a=0;a<m;a++){ const k=cur[a]; (used[k]=used[k]||[]).push(req[a]); }
+            for(const k in used) used[k].forEach((r,j)=>{ if(false) extra+=2; });
+            if(cost+extra<bc){ bc=cost+extra; best=cur.slice(); }
+            return;
+        }
+        for(let k=1;k<=4;k++){
+            let ok=true;
+            for(let j=0;j<i;j++){ const a=req[j]; if((a.fret<req[i].fret&&cur[j]>=k)||(a.fret>req[i].fret&&cur[j]<=k)){ ok=false; break; } }
+            if(!ok) continue;
+            cur[i]=k; go(i+1,cost+noteCost(req[i],k));
+        }
+    })(0,0);
+    if(m&&!best) return null;
+    // mesma casa em cordas diferentes: mesmo número de dedo em cada ponto (sem barra, a não ser a pestana do acorde)
+    const byFret={}; req.forEach((r,i)=>{ (byFret[r.fret]=byFret[r.fret]||[]).push(i); });
+    for(const f in byFret){ const ix=byFret[f]; if(ix.length<2) continue;
+        const ex=ix.find(i=>homes[best[i]].some(h=>h.s===req[i].s&&h.f===req[i].fret)); const k0=ex!==undefined?best[ex]:Math.min(...ix.map(i=>best[i])); ix.forEach(i=>{ best[i]=k0; }); }
+    const F=[null,null,null,null,null], byStr={};
+    req.forEach((r,i)=>{ const k=best[i]; byStr[r.s]=k; const g=F[k]||(F[k]={fret:r.fret,strs:[]}); g.strs.push(r.s); });
+    // corda solta tocada: o dedo do acorde que estava nela NÃO sai da forma, só levanta de leve (lift) sobre aquela corda
+    // (ex.: Fá maior com pestana e a Si solta: a pestana continua lá, levantada só na Si)
+    const fretted=new Set(req.map(r=>r.s)), isOpen=s=>playedSet.has(s)&&!fretted.has(s);
+    // a pestana do acorde continua nas outras cordas (se o dedo ficou na mesma casa)
+    for(let k=1;k<=4;k++) if(F[k]&&homes[k].length>1) homes[k].forEach(h=>{
+        if(h.f!==F[k].fret||fretted.has(h.s)||F[k].strs.includes(h.s)) return;
+        F[k].strs.push(h.s); if(isOpen(h.s)) (F[k].lift=F[k].lift||[]).push(h.s);
+    });
+    // dedos do acorde que ficaram livres continuam no lugar, se não atrapalham
+    for(let k=1;k<=4;k++){
+        if(F[k]||!homes[k].length) continue;
+        const keep=homes[k].filter(h=>{
+            if(fretted.has(h.s)) return false;
+            for(let j=1;j<=4;j++){ if(!F[j]) continue; if((j<k&&F[j].fret>h.f)||(j>k&&F[j].fret<h.f)) return false; }
+            return true;
+        });
+        if(keep.length){ const f0=keep[0].f, hs=keep.filter(h=>h.f===f0); F[k]={fret:f0,strs:hs.map(h=>h.s)}; const lf=hs.filter(h=>isOpen(h.s)).map(h=>h.s); if(lf.length) F[k].lift=lf; }
+    }
+    // só é pestana (barra) se o acorde exige (ex.: Fá maior); a mesma casa em cordas diferentes fora disso são pontos separados
+    for(let k=1;k<=4;k++) if(F[k]){ F[k].strs.sort((a,b)=>a-b); if(F[k].lift) F[k].lift.sort((a,b)=>a-b); F[k].barre=homes[k].length>1&&homes[k].some(h=>h.f===F[k].fret); }
+    return {F,byStr};
+}
+function vgHandModelGreedy(gn,voic){
+    const F=[null,null,null,null,null];
+    if(!voic){
+        gn.forEach(n=>{ if(n.fret>0&&n.f>=1){ const g=F[n.f]||(F[n.f]={fret:n.fret,strs:new Set()}); if(g.fret===n.fret) g.strs.add(n.s); } });
+        return F;
+    }
+    for(let i=0;i<6;i++){ const f=voic.frets[i], k=voic.fing[i]; if(f>0&&k>=1&&k<=4){ const g=F[k]||(F[k]={fret:f,strs:new Set()}); if(g.fret===f) g.strs.add(i); } }
+    F.forEach(g=>{ if(g) g.bar=g.strs.size>1; });
+    const release=(k,s)=>{ F[k].strs.delete(s); if(!F[k].strs.size) F[k]=null; };
+    gn.slice().sort((a,b)=>a.s-b.s).forEach(n=>{
+        let hk=0; for(let k=1;k<=4;k++) if(F[k]&&F[k].strs.has(n.s)){ hk=k; break; }
+        if(n.fret===0){ if(hk&&!F[hk].bar) release(hk,n.s); n.f=0; return; }
+        if(hk&&F[hk].fret===n.fret){ n.f=hk; return; }
+        if(hk){ if(F[hk].bar){ if(n.fret<F[hk].fret){ n.f=hk; return; } } else release(hk,n.s); }
+        const held=[1,2,3,4].filter(k=>F[k]), free=[1,2,3,4].filter(k=>!F[k]);
+        if(!free.length){ // todos os dedos ocupados: usa o dedo que já está nessa casa (pestana) ou o mais próximo
+            let b=held[0]; held.forEach(k=>{ if(Math.abs(F[k].fret-n.fret)<Math.abs(F[b].fret-n.fret)) b=k; });
+            if(F[b].fret===n.fret){ F[b].strs.add(n.s); F[b].bar=true; } n.f=b; return; }
+        const mx=held.length?Math.max(...held.map(k=>F[k].fret)):0, mn=held.length?Math.min(...held.map(k=>F[k].fret)):99;
+        let bk=free[0], bc=1e9;
+        free.forEach(k=>{
+            let cost=0; held.forEach(j=>{ if((j<k&&F[j].fret>n.fret)||(j>k&&F[j].fret<n.fret)) cost+=10; });
+            if(!held.length) cost+=Math.abs(k-(n.f||1)); else if(n.fret>=mx) cost+=4-k; else if(n.fret<=mn) cost+=k-1;
+            if(cost<bc){ bc=cost; bk=k; }
+        });
+        F[bk]={fret:n.fret,strs:new Set([n.s]),bar:false}; n.f=bk;
+    });
+    return F;
+}
+const vgKS=24, vgHand={palmY:230,palmT:null,last:0,cam:null,f:[null,0,1,2,3].map((v,k)=>k?{x:GL_REST_X(),y:230+(k-2.5)*vgKS,p:0,tx:0,ty:0,tp:0,strs:[],fret:0}:null)};
+function GL_REST_X(){ return 330+78; }
+function vgHandStep(F){
+    const H=vgHand, now=performance.now(), dt=Math.min(.1,Math.max(0,(now-(H.last||now))/1000)); H.last=now;
+    const a=1-Math.exp(-dt*16), NUT=GL.NUT, BR=GL.BR;
+    const pr=[1,2,3,4].filter(k=>F[k]);
+    if(pr.length){
+        let acc=0; pr.forEach(k=>{ const Y=(gFretY(F[k].fret-1)+gFretY(F[k].fret))/2; acc+=Y-(k-2.5)*vgKS*.7; });
+        H.palmT=Math.max(NUT+30,Math.min(BR-70,acc/pr.length));
+    }
+    if(H.palmT==null){ H.palmT=NUT+60; H.palmY=H.palmT; }
+    H.palmY+=(H.palmT-H.palmY)*a;
+    for(let k=1;k<=4;k++){
+        const fk=H.f[k], g=F[k];
+        if(g){
+            const Y=(gFretY(g.fret-1)+gFretY(g.fret))/2, strs=[...g.strs].sort((x,y)=>x-y);
+            fk.strs=strs; fk.fret=g.fret; fk.tx=gStrX((strs[0]+strs[strs.length-1])/2,Y); fk.ty=Y; fk.lift=g.lift||[]; fk.tp=fk.lift.length?(fk.lift.length>=strs.length?.55:.8):1;
+        } else { fk.tx=GL.CX+78; fk.ty=H.palmY+(k-2.5)*vgKS; fk.tp=0; }
+        fk.x+=(fk.tx-fk.x)*a; fk.y+=(fk.ty-fk.y)*a; fk.p+=(fk.tp-fk.p)*a;
+    }
+}
+function vgDrawHand(c,light){
+    const H=vgHand, CX=GL.CX, px=CX+112;
+    const sk=light?['#f4cdb0','#e5ae8a','#b97b59']:['#f0c4a4','#dca37e','#a86f50'], out=light?'#6a3a20':'#2a150b';
+    const y0=H.palmY-1.5*vgKS-18, y1=H.palmY+1.5*vgKS+18;
+    c.save(); c.lineJoin='round'; c.lineCap='round';
+    // palma com volume (só a mão: sem punho nem antebraço)
+    const pg=c.createRadialGradient(px+16,H.palmY-14,6,px+24,H.palmY,78); pg.addColorStop(0,sk[0]); pg.addColorStop(.65,sk[1]); pg.addColorStop(1,sk[2]);
+    c.fillStyle=pg; c.strokeStyle=out; c.lineWidth=3; c.beginPath(); c.roundRect(px-16,y0,104,y1-y0,36); c.fill(); c.stroke();
+    // dedos: do mindinho ao indicador (o indicador fica por cima)
+    for(let k=4;k>=1;k--){
+        const fk=H.f[k], K=[px,H.palmY+(k-2.5)*vgKS], P=[fk.x,fk.y], r=1-fk.p, w=([0,19,19,18,15][k])*(1+.12*r);
+        const Q=[(K[0]+P[0])/2+10+r*8,(K[1]+P[1])/2];
+        const path=()=>{ c.beginPath(); c.moveTo(K[0],K[1]); c.quadraticCurveTo(Q[0],Q[1],P[0],P[1]); };
+        const B=t=>[(1-t)*(1-t)*K[0]+2*(1-t)*t*Q[0]+t*t*P[0],(1-t)*(1-t)*K[1]+2*(1-t)*t*Q[1]+t*t*P[1]];
+        c.globalAlpha=.55+.45*fk.p;
+        c.strokeStyle=out; c.lineWidth=w+4; path(); c.stroke();
+        c.strokeStyle=sk[1]; c.lineWidth=w; path(); c.stroke();
+        c.save(); c.translate(0,w*.2); c.strokeStyle=sk[0]; c.globalAlpha*=.85; c.lineWidth=w*.42; path(); c.stroke(); c.restore();
+        c.save(); c.translate(0,-w*.3); c.strokeStyle=sk[2]; c.globalAlpha*=.5; c.lineWidth=w*.25; path(); c.stroke(); c.restore();
+        // dobras das juntas
+        const dx=P[0]-K[0], dy=P[1]-K[1], L=Math.hypot(dx,dy)||1, nx=-dy/L, ny=dx/L;
+        c.strokeStyle=sk[2]; c.lineWidth=1.8; c.globalAlpha=.55*(.55+.45*fk.p);
+        [.38,.68].forEach(t=>{ const b=B(t); c.beginPath(); c.moveTo(b[0]-nx*w*.38,b[1]-ny*w*.38); c.lineTo(b[0]+nx*w*.38,b[1]+ny*w*.38); c.stroke(); });
+        // unha na ponta
+        const tx=P[0]-Q[0], ty=P[1]-Q[1], tl=Math.hypot(tx,ty)||1, ang=Math.atan2(ty,tx);
+        c.globalAlpha=(.55+.45*fk.p)*.95; c.fillStyle='rgba(255,239,230,.92)'; c.strokeStyle=sk[2]; c.lineWidth=1;
+        c.beginPath(); c.ellipse(P[0]-tx/tl*5,P[1]-ty/tl*5,6.5,w*.3,ang,0,7); c.fill(); c.stroke();
+        c.globalAlpha=.55+.45*fk.p; c.fillStyle=sk[1]; c.beginPath(); c.arc(K[0],K[1],9,0,7); c.fill();
+    }
+    c.globalAlpha=1; c.restore();
+}
+
 
 // ======================== EVENTOS DO PLAYER ========================
 playBtn.addEventListener('click',startPlayback);
@@ -2105,9 +2235,6 @@ function liveU(t){
 function liveScoreUpdate(){
     if(!state.midiLoaded||!state.notes.length||VIEW==='violao'||canvasContainer.style.display==='none') return;
     const paper=livePaper();
-    if(state.style==='acomp'&&state.src&&state.src.an&&state.mode==='violao'){
-        liveMsg('No estilo <b>Acompanhamento</b> o violão toca só as cifras (batida ou dedilhado), por isso não há tablatura para mostrar.<br>Troque o <b>Estilo</b> em ⚙ Opções para ver a tablatura.','acomp'); return;
-    }
     const sig=[SCMODE,state.mode,state.t,state.style,state.harm?1:0,state.cant?1:0,state.srcBpm,state.srcTs,state.srcPickup,state.srcKey].join('|');
     if(LIVE.notesRef!==state.notes||LIVE.sig!==sig){ LIVE.notesRef=state.notes; LIVE.sig=sig; LIVE.msg=''; paper.textContent=''; liveBuild(); }
     if(!LIVE.ok){ liveMsg('Não foi possível montar a partitura deste hino.','erro'); return; }
