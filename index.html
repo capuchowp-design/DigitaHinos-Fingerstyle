@@ -325,6 +325,8 @@
                 </select>
             </div>
             <div class="speed-control" title="Som do violão"><span>Som:</span><select id="vgType" aria-label="Tipo de violão"></select></div>
+            <div class="speed-control" title="Mostrar ou esconder a mãozinha no braço do violão"><span>Mão:</span>
+                <select id="handSel" aria-label="Mãozinha"><option value="on">Mostrar</option><option value="off">Ocultar</option></select></div>
         <div class="speed-control" id="modeCtl" style="display:none"><span>Voz:</span><select id="modeSel" aria-label="Voz a executar"></select></div>
         <div class="speed-control" id="keyCtl" style="display:none" title="Tom em que o hino é tocado (o app escolhe o mais fácil no violão)"><span>Tom:</span><select id="keySel" aria-label="Tom"></select></div>
         <div class="speed-control" id="harmCtl" style="display:none" title="Simples: acordes básicos. Melhor encaixe: o acorde que combina melhor com o soprano e o baixo de cada tempo. Cantoral: as cifras do livro (hinos com cifra disponível)"><span>Harmonia:</span><select id="harmSel" aria-label="Harmonia"><option value="0">Simples</option><option value="1">Melhor encaixe</option><option value="2">Cantoral (livro)</option></select></div>
@@ -754,6 +756,8 @@ let scoreNotes=[]; const scoreChords=[];
 // o que aparece na tela: 'both' (violão + partitura) | 'violao' | 'partitura'
 // formato da partitura: 'both' (notação + tablatura) | 'tab' (só tablatura)
 let VIEW='both', SCMODE='both';
+let vgShowHand=true;   // mostrar a mãozinha esquerda
+try{ vgShowHand=localStorage.getItem('vgHand')!=='0'; }catch(e){}
 try{ VIEW=localStorage.getItem('vgView')||'both'; SCMODE=localStorage.getItem('vgScMode')||'both'; }catch(e){}
 if(!['both','violao','partitura'].includes(VIEW)) VIEW='both';
 if(!['both','tab'].includes(SCMODE)) SCMODE='both';
@@ -1786,8 +1790,10 @@ function drawPiano(){
     for(let i=0;i<6;i++) TX(GSTR_LET[i],gStrX(i,NUT),NUT-30,Math.max(7,Math.min(12,s*21)),gOn[i]?'#fff':'rgba(217,199,160,.7)');
     // --- mão esquerda: forma do acorde + dedos (com limite de alcance humano) ---
     const voic=chord?(chord.v||chVoicing(chord.root,chord.q)):null;
-    const F=vgHandModel(gn,voic); vgHandStep(F);
-    vgDrawHand(c,false);
+    // só aparecem os dedos que apertam uma nota que está soando agora (o que a tablatura mostra); a forma do acorde não desenha dedos extras
+    const F=vgHandModel(gn,voic).map(g=>(g&&[...g.strs].some(si=>gOn[si]&&gOn[si].fret===g.fret))?g:null);
+    vgHandStep(F);
+    if(vgShowHand) vgDrawHand(c,false);
     const hc=G_HOT, rMin=6.5/s;
     [1,2,3,4].forEach(k=>{
         const g=F[k]; if(!g) return;
@@ -1916,7 +1922,22 @@ function vgHandSolve(req,played,voic){
     // mesma casa em cordas diferentes: mesmo número de dedo em cada ponto (sem barra, a não ser a pestana do acorde)
     const byFret={}; req.forEach((r,i)=>{ (byFret[r.fret]=byFret[r.fret]||[]).push(i); });
     for(const f in byFret){ const ix=byFret[f]; if(ix.length<2) continue;
-        const ex=ix.find(i=>homes[best[i]].some(h=>h.s===req[i].s&&h.f===req[i].fret)); const k0=ex!==undefined?best[ex]:Math.min(...ix.map(i=>best[i])); ix.forEach(i=>{ best[i]=k0; }); }
+        const ex=ix.find(i=>homes[best[i]].some(h=>h.s===req[i].s&&h.f===req[i].fret)); const k0=ex!==undefined?best[ex]:Math.min(...ix.map(i=>best[i]));
+        const barHome=ex!==undefined&&homes[best[ex]].filter(h=>h.f===req[ex].fret).length>1;
+        if(!barHome){   // sem pestana no acorde: cada corda ganha o seu próprio dedo (a ponta do dedo fica exatamente na casa da tablatura)
+            const fn=+f, other=[]; req.forEach((r,j)=>{ if(!ix.includes(j)) other.push({f:r.fret,k:best[j]}); });
+            const used=new Set(other.map(o=>o.k));
+            const pool=[1,2,3,4].filter(k=>!used.has(k)&&other.every(o=>(o.f<fn&&o.k<k)||(o.f>fn&&o.k>k)));
+            if(pool.length>=ix.length){
+                let bestA=null, bestC=1e9; const cur=[], taken=new Set();
+                (function go(n){ if(n===ix.length){
+                    const Fx=[null,null,null,null,null]; other.forEach(o=>{ Fx[o.k]={fret:o.f}; }); cur.forEach(k=>{ Fx[k]={fret:fn}; });
+                    let c=vgReachOK(Fx)?0:100; cur.forEach((k,q)=>{ c+=Math.abs(k-best[ix[q]]); }); if(c<bestC){ bestC=c; bestA=cur.slice(); } return; }
+                    pool.forEach(k=>{ if(taken.has(k)) return; taken.add(k); cur[n]=k; go(n+1); taken.delete(k); }); })(0);
+                if(bestC<100){ ix.forEach((i,q)=>{ best[i]=bestA[q]; }); continue; }
+            }
+        }
+        ix.forEach(i=>{ best[i]=k0; }); }
     const F=[null,null,null,null,null], byStr={};
     req.forEach((r,i)=>{ const k=best[i]; byStr[r.s]=k; const g=F[k]||(F[k]={fret:r.fret,strs:[]}); g.strs.push(r.s); });
     // corda solta tocada: o dedo do acorde que estava nela NÃO sai da forma, só levanta de leve (lift) sobre aquela corda
@@ -1938,7 +1959,7 @@ function vgHandSolve(req,played,voic){
         if(keep.length){ const f0=keep[0].f, hs=keep.filter(h=>h.f===f0); F[k]={fret:f0,strs:hs.map(h=>h.s)}; const lf=hs.filter(h=>isOpen(h.s)).map(h=>h.s); if(lf.length) F[k].lift=lf; }
     }
     // só é pestana (barra) se o acorde exige (ex.: Fá maior); a mesma casa em cordas diferentes fora disso são pontos separados
-    for(let k=1;k<=4;k++) if(F[k]){ F[k].strs.sort((a,b)=>a-b); if(F[k].lift) F[k].lift.sort((a,b)=>a-b); F[k].barre=homes[k].length>1&&homes[k].some(h=>h.f===F[k].fret); }
+    for(let k=1;k<=4;k++) if(F[k]){ F[k].strs.sort((a,b)=>a-b); if(F[k].lift) F[k].lift.sort((a,b)=>a-b); F[k].barre=(homes[k].length>1&&homes[k].some(h=>h.f===F[k].fret))||F[k].strs.length>1; }
     return {F,byStr};
 }
 function vgHandModelGreedy(gn,voic){
@@ -2069,6 +2090,10 @@ scSel.addEventListener('change',()=>{ SCMODE=scSel.value; try{ localStorage.setI
     sel.value=VG_TYPE;
     sel.addEventListener('change',()=>{ VG_TYPE=sel.value; try{ localStorage.setItem('vgType',VG_TYPE); }catch(e){} vgSwitchSampler(); });
 })();
+// mostrar / ocultar a mãozinha
+const handSel=document.getElementById('handSel');
+handSel.value=vgShowHand?'on':'off';
+handSel.addEventListener('change',()=>{ vgShowHand=handSel.value==='on'; try{ localStorage.setItem('vgHand',vgShowHand?'1':'0'); }catch(e){} if(state.midiLoaded) drawScene(); });
 // painel de opções
 document.getElementById('optBtn').addEventListener('click',e=>{
     const p=document.getElementById('optsPanel'), on=p.classList.toggle('open'); e.currentTarget.classList.toggle('on',on);
