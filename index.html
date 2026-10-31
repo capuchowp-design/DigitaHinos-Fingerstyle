@@ -1,0 +1,2658 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <title>DigitaHinos FingerStyle</title>
+    <link rel="manifest" href="manifest.json">
+    <link rel="apple-touch-icon" href="apple-touch-icon.png">
+    <link rel="icon" type="image/png" sizes="32x32" href="favicon-32x32.png">
+    <link rel="icon" type="image/png" sizes="192x192" href="icon-192x192.png">
+    <meta name="theme-color" content="#10142e">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/tone/14.8.49/Tone.js"></script>
+    <style>
+        @import url('https://cdn.jsdelivr.net/fontsource/fonts/inter@5/latin.css');
+
+        /* ===== TEMA: noite índigo + violeta (destaque) + rosa (nota tocada) ===== */
+        :root {
+            --bg-base:#090b19; --bg-header:linear-gradient(135deg,#10142e,#1a2050);
+            --bg-controls:linear-gradient(0deg,#1a2050,#0d1029);
+            --bg-panel:#12162f; --bg-btn:#232955; --bg-btn-hover:#323a73;
+            --bg-input:#1a1f42; --border-main:#2a3166; --border-btn:#3a4388;
+            --text-main:#ece9ff; --text-muted:#9aa0d4; --text-dim:#6a719e;
+            --accent:#9b87ff; --accent-2:#6b52e0; --hot:#ff4f8b; --gold:#ffc857; --sky:#4cc3ff;
+            --paper:#f7f0df; --beige:#d9c7a0;
+            --stage-bg:#0d1029;
+        }
+        * { margin:0; padding:0; box-sizing:border-box; }
+        html, body { height:100%; }
+        body {
+            font-family:'Inter',sans-serif; background:var(--bg-base); color:var(--text-main);
+            overflow:hidden; height:100vh; height:100dvh;
+            display:flex; flex-direction:column;
+            touch-action:manipulation; -webkit-tap-highlight-color:transparent;
+            padding-bottom:env(safe-area-inset-bottom,0);
+        }
+        button, select, input { font-family:inherit; }
+
+        #noteCountBadge { display:none !important; }
+
+        /* ===== CABEÇALHO ===== */
+        .app-header {
+            display:flex; align-items:center; justify-content:space-between; gap:10px;
+            padding:8px 16px; padding-top:calc(8px + env(safe-area-inset-top,0));
+            background:var(--bg-header); border-bottom:1px solid var(--border-main);
+            z-index:10; flex-shrink:0;
+        }
+        .app-logo { display:flex; align-items:center; gap:9px; min-width:0; }
+        .app-logo svg { width:30px; height:30px; flex-shrink:0; }
+        .logo-name { font-size:16px; font-weight:800; white-space:nowrap;
+            background:linear-gradient(135deg,#c9bcff,#9b87ff 55%,#ff8fb5); -webkit-background-clip:text; background-clip:text; -webkit-text-fill-color:transparent; }
+        .file-name { font-size:12px; color:var(--text-muted); min-width:0; flex:1; text-align:center;
+            overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+        .header-right { display:flex; align-items:center; gap:8px; flex-shrink:0; }
+        .hbtn {
+            display:inline-flex; align-items:center; gap:6px; padding:8px 14px; border-radius:10px;
+            font-size:13px; font-weight:700; cursor:pointer; border:1.5px solid var(--border-btn);
+            background:var(--bg-btn); color:var(--text-main); transition:all .2s; white-space:nowrap;
+        }
+        .hbtn:hover { transform:translateY(-1px); background:var(--bg-btn-hover); }
+        .hbtn svg { width:15px; height:15px; fill:none; stroke:currentColor; stroke-width:2.4; flex-shrink:0; }
+        .hbtn.primary { background:linear-gradient(135deg,var(--accent),var(--accent-2)); border-color:transparent; color:#fff; box-shadow:0 0 14px rgba(155,135,255,.35); }
+        .hbtn.install { border-color:var(--sky); color:var(--sky); background:rgba(76,195,255,.1); }
+        .hbtn.pix { border-color:var(--gold); color:var(--gold); background:rgba(255,200,87,.1); }
+        .hbtn.hidden { display:none !important; }
+        .synth-badge { display:flex; align-items:center; gap:5px; font-size:11px; padding:3px 10px; border-radius:20px;
+            color:var(--text-muted); border:1px solid var(--border-main); background:rgba(155,135,255,.08); white-space:nowrap; }
+        .synth-badge .dot { width:6px; height:6px; border-radius:50%; background:var(--accent); animation:pdot 2s ease-in-out infinite; }
+        @keyframes pdot{0%,100%{opacity:1}50%{opacity:.3}}
+
+        /* ===== PALCO ===== */
+        .view { display:flex; flex:1; flex-direction:column; overflow:hidden; min-height:0; }
+        .main-container { flex:1; position:relative; overflow:hidden; min-height:0; background:var(--stage-bg); }
+        .canvas-container {   /* moldura 16:9 da partitura / tablatura */
+            position:absolute; display:none; overflow:hidden;
+            background:var(--paper); border:2px solid var(--beige); border-radius:12px;
+            box-shadow:0 8px 30px rgba(0,0,0,.5);
+        }
+        .piano-container { position:absolute; display:none; overflow:hidden; background:transparent; }
+        #pianoCanvas { width:100%; height:100%; display:block; }
+        #scorePaper { position:absolute; inset:0; display:flex; align-items:center; justify-content:center; }
+        #scorePaper svg { display:block; width:100%; height:100%; }
+        .score-msg { color:#4a4260; font-size:14px; text-align:center; padding:16px; line-height:1.5; }
+
+        /* ===== BOAS-VINDAS ===== */
+        .welcome-screen { position:absolute; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:center; z-index:5; padding:16px; text-align:center;
+            background:radial-gradient(ellipse at center,#1c2252 0%,#090b19 72%); }
+        .welcome-screen.hidden { display:none; }
+        .welcome-icon { width:min(46vw,170px); height:auto; margin-bottom:14px; filter:drop-shadow(0 10px 24px rgba(155,135,255,.35)); animation:float 3.2s ease-in-out infinite; }
+        @keyframes float{0%,100%{transform:translateY(0)}50%{transform:translateY(-10px)}}
+        .welcome-screen h1 { font-size:26px; font-weight:800; margin-bottom:6px;
+            background:linear-gradient(135deg,#c9bcff,#9b87ff 55%,#ff8fb5); -webkit-background-clip:text; background-clip:text; -webkit-text-fill-color:transparent; }
+        .welcome-screen p { color:var(--text-muted); font-size:14px; margin-bottom:18px; max-width:340px; line-height:1.45; }
+        .welcome-btn { padding:13px 34px; border:none; border-radius:12px; cursor:pointer; font-size:16px; font-weight:800; color:#fff;
+            background:linear-gradient(135deg,var(--accent),var(--accent-2)); box-shadow:0 6px 24px rgba(155,135,255,.45); transition:transform .2s; }
+        .welcome-btn:hover { transform:scale(1.05); }
+
+        /* ===== CONTROLES ===== */
+        .controls-bar { display:flex; align-items:center; justify-content:center; gap:10px 14px; padding:8px 16px; flex-wrap:wrap;
+            background:var(--bg-controls); border-top:1px solid var(--border-main); flex-shrink:0; }
+        .transport-group { display:flex; align-items:center; gap:8px; }
+        .control-btn { width:40px; height:40px; border-radius:50%; border:none; cursor:pointer; display:flex; align-items:center; justify-content:center;
+            transition:all .2s; background:var(--bg-btn); color:var(--text-main); }
+        .control-btn:hover { background:var(--bg-btn-hover); transform:scale(1.08); }
+        .control-btn.active { background:linear-gradient(135deg,var(--accent),var(--accent-2)); color:#fff; }
+        .control-btn.play-btn { width:52px; height:52px; background:linear-gradient(135deg,var(--accent),var(--accent-2)); color:#fff; box-shadow:0 0 16px rgba(155,135,255,.45); }
+        .control-btn svg { width:18px; height:18px; fill:currentColor; }
+        .control-btn.play-btn svg { width:22px; height:22px; }
+        .progress-container { display:flex; align-items:center; gap:9px; flex:1; max-width:460px; min-width:180px; }
+        .time-display { font-size:11px; color:var(--text-muted); font-variant-numeric:tabular-nums; min-width:34px; }
+        .progress-bar { flex:1; height:6px; background:var(--bg-btn); border-radius:3px; cursor:pointer; position:relative; overflow:hidden; }
+        .progress-fill { height:100%; width:0; background:linear-gradient(90deg,var(--accent),var(--hot)); border-radius:3px; transition:width .1s linear; }
+        .speed-control { display:flex; align-items:center; gap:5px; font-size:12px; color:var(--text-muted); }
+        .speed-control select, .opts-panel select { background:var(--bg-btn); color:var(--text-main); border:1px solid var(--border-btn); border-radius:6px; padding:5px 7px; font-size:12px; cursor:pointer; max-width:200px; }
+        .volume-control { display:flex; align-items:center; gap:5px; }
+        .volume-slider { width:80px; -webkit-appearance:none; appearance:none; height:4px; background:var(--bg-btn); border-radius:2px; outline:none; }
+        .volume-slider::-webkit-slider-thumb { -webkit-appearance:none; width:14px; height:14px; border-radius:50%; background:var(--accent); cursor:pointer; }
+        .opt-toggle { padding:6px 12px; border-radius:8px; border:1px solid var(--border-btn); background:var(--bg-btn); color:var(--text-main); font-size:12px; font-weight:700; cursor:pointer; }
+        .opt-toggle.on { border-color:var(--accent); color:var(--accent); }
+        .opts-panel { display:none; width:100%; flex-wrap:wrap; justify-content:center; gap:8px 16px; padding:8px 4px 2px; border-top:1px dashed var(--border-main); }
+        .opts-panel.open { display:flex; }
+
+        /* ===== MODAIS ===== */
+        .pb-modal { position:fixed; inset:0; z-index:2000; background:rgba(4,5,14,.72); display:flex; align-items:center; justify-content:center; padding:12px; backdrop-filter:blur(6px); }
+        .pb-modal[hidden] { display:none; }
+        .pb-sheet { background:var(--bg-panel); color:var(--text-main); border:1px solid var(--border-main); border-radius:14px; width:min(560px,100%); max-height:calc(100dvh - 24px); display:flex; flex-direction:column; overflow:hidden; box-shadow:0 18px 60px rgba(0,0,0,.55); }
+        .pb-sheet.wide { width:min(760px,100%); height:calc(100dvh - 24px); }
+        .pb-head { display:flex; align-items:center; justify-content:space-between; padding:12px 16px; border-bottom:1px solid var(--border-main); flex-shrink:0; }
+        .pb-head h2 { font-size:16px; margin:0; }
+        .pb-x { background:none; border:none; color:var(--text-muted); font-size:20px; cursor:pointer; padding:2px 8px; }
+        .pb-body { padding:14px 16px 16px; overflow:auto; flex:1; min-height:0; }
+        .hino-search { width:100%; padding:11px 13px; border-radius:10px; border:1px solid var(--border-main); background:var(--bg-btn); color:var(--text-main); font:600 14px Inter,sans-serif; margin-bottom:12px; outline:none; }
+        .hino-search:focus { border-color:var(--accent); }
+        .hino-item { display:flex; align-items:center; gap:12px; width:100%; text-align:left; padding:10px 12px; margin:0 0 6px; background:var(--bg-btn); color:var(--text-main); border:1px solid var(--border-btn); border-radius:10px; cursor:pointer; font:500 14px Inter,sans-serif; }
+        .hino-item:hover { border-color:var(--accent); background:var(--bg-btn-hover); }
+        .hino-item b { min-width:42px; color:var(--accent); font-weight:800; }
+        .help-list { font-size:14px; line-height:1.6; padding-left:18px; }
+        .help-list li { margin-bottom:6px; }
+
+        /* PIX */
+        #pixModal { position:fixed; inset:0; z-index:2100; background:rgba(4,5,14,.8); backdrop-filter:blur(8px); display:flex; align-items:center; justify-content:center; }
+        #pixModal.hidden { display:none; }
+        .pix-box { background:var(--bg-panel); border:1px solid rgba(255,200,87,.45); border-radius:16px; padding:28px 32px; max-width:340px; width:90%; text-align:center; box-shadow:0 0 40px rgba(255,200,87,.12); }
+        .pix-title { font-size:17px; font-weight:800; color:var(--gold); letter-spacing:2px; margin-bottom:4px; }
+        .pix-sub { font-size:12px; color:var(--text-muted); margin-bottom:20px; }
+        .pix-key-box { background:rgba(255,200,87,.08); border:1px solid rgba(255,200,87,.28); border-radius:10px; padding:14px 16px; margin-bottom:14px; }
+        .pix-key-label { font-size:10px; letter-spacing:2px; color:var(--text-muted); text-transform:uppercase; margin-bottom:6px; }
+        .pix-key { font-family:monospace; font-size:14px; color:var(--gold); word-break:break-all; user-select:all; }
+        .pix-copy-btn { display:inline-flex; align-items:center; gap:6px; padding:10px 24px; border-radius:8px; background:rgba(255,200,87,.16); border:1.5px solid var(--gold); color:var(--gold); font-size:13px; font-weight:700; cursor:pointer; margin-bottom:12px; }
+        .pix-copy-btn:hover { background:rgba(255,200,87,.3); }
+        .pix-close { font-size:12px; color:var(--text-dim); cursor:pointer; text-decoration:underline; background:none; border:none; }
+        .pix-close:hover { color:var(--text-main); }
+
+        .loading-overlay { position:absolute; inset:0; background:rgba(9,11,25,.8); display:none; align-items:center; justify-content:center; z-index:50; }
+        .loading-overlay.active { display:flex; }
+        .spinner { width:44px; height:44px; border:4px solid #2a3166; border-top-color:var(--accent); border-radius:50%; animation:spin .8s linear infinite; }
+        @keyframes spin{to{transform:rotate(360deg)}}
+
+        .error-toast,.success-toast { position:fixed; bottom:max(96px,env(safe-area-inset-bottom,0px) + 76px); left:50%; transform:translateX(-50%) translateY(18px); color:#fff; padding:9px 20px; border-radius:22px; font-size:13px; font-weight:600; opacity:0; pointer-events:none; transition:all .3s; z-index:3000; max-width:90vw; text-align:center; }
+        .error-toast { background:#e0245e; }
+        .success-toast { background:#5b45d6; }
+        .error-toast.show,.success-toast.show { opacity:1; transform:translateX(-50%) translateY(0); }
+
+        /* ===== RESPONSIVO ===== */
+        @media(max-width:640px){
+            .app-header { padding:6px 10px; padding-top:calc(6px + env(safe-area-inset-top,0)); gap:6px; }
+            .logo-name { font-size:14px; } .app-logo svg { width:26px; height:26px; }
+            .hbtn { padding:7px 10px; font-size:12px; } .hbtn span { display:none; }
+            .synth-badge { display:none; }
+            .controls-bar { padding:6px 8px; gap:6px 8px; }
+            .transport-group { order:1; }
+            .progress-container { order:2; flex:1 1 140px; min-width:120px; max-width:none; }
+            .speed-control span { display:none; } .volume-slider { width:56px; }
+            .control-btn { width:38px; height:38px; } .control-btn.play-btn { width:48px; height:48px; }
+        }
+        @media(max-width:420px){ .logo-name { display:none; } }
+
+        /* ordem dos controles no celular: botões, barra de progresso e depois as opções */
+        @media(max-width:640px){
+            .controls-bar > .speed-control, .controls-bar > .opt-toggle { order:3; }
+            .controls-bar > .opts-panel { order:5; }
+        }
+        /* telas baixas (celular deitado): cabeçalho e controles mais compactos */
+        @media(max-height:520px){
+            .app-header { padding:4px 10px; padding-top:calc(4px + env(safe-area-inset-top,0)); }
+            .app-logo svg { width:24px; height:24px; } .logo-name, .synth-badge { display:none; }
+            .hbtn { padding:6px 10px; font-size:12px; }
+            .controls-bar { padding:4px 10px; gap:4px 10px; }
+            .control-btn { width:34px; height:34px; } .control-btn.play-btn { width:42px; height:42px; }
+            .speed-control span { display:none; }
+            .progress-container { min-width:120px; }
+            .opt-toggle { padding:5px 9px; }
+        }
+    </style>
+</head>
+
+<body>
+<header class="app-header">
+    <div class="app-logo">
+        <svg viewBox="0 0 32 32" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><defs><linearGradient id="lgbg" x1="0" y1="0" x2="32" y2="32" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#9b87ff"/><stop offset="1" stop-color="#4a36b8"/></linearGradient></defs><rect x="1" y="1" width="30" height="30" rx="8" fill="url(#lgbg)"/><g transform="translate(16 16) rotate(40) scale(.0265) translate(0 -480)"><defs><linearGradient id="gbody" x1="-200" y1="0" x2="200" y2="0" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#08080b"/><stop offset=".5" stop-color="#23232b"/><stop offset="1" stop-color="#08080b"/></linearGradient></defs><g transform="rotate(0 0 480)">
+<path d="M66.0,500.0 C120.0,495.0 165.0,540.0 168.0,610.0 C168.0,655.0 150.0,670.0 152.0,705.0 C154.0,760.0 215.0,775.0 215.0,860.0 C215.0,930.0 130.0,962.0 0.0,962.0 C-130.0,962.0 -215.0,930.0 -215.0,860.0 C-215.0,775.0 -154.0,760.0 -152.0,705.0 C-150.0,670.0 -166.0,655.0 -164.0,630.0 C-164.0,610.0 -150.0,595.0 -132.0,590.0 C-105.0,582.0 -80.0,570.0 -62.0,548.0 Z" fill="url(#gbody)" stroke="#d9c7a0" stroke-width="13" stroke-linejoin="round"/>
+<path d="M61.4,516.0 C111.6,511.3 153.5,553.2 156.2,618.3 C156.2,660.1 139.5,674.1 141.4,706.6 C143.2,757.8 200.0,771.7 200.0,850.8 C200.0,915.9 120.9,945.6 0.0,945.6 C-120.9,945.6 -200.0,915.9 -200.0,850.8 C-200.0,771.7 -143.2,757.8 -141.4,706.6 C-139.5,674.1 -154.4,660.1 -152.5,636.9 C-152.5,618.3 -139.5,604.3 -122.8,599.7 C-97.7,592.2 -74.4,581.1 -57.7,560.6 Z" fill="none" stroke="#d9c7a0" stroke-opacity=".6" stroke-width="5"/>
+<path d="M-58,170 L58,170 L70,640 L-70,640 Z" fill="#08080b" stroke="#d9c7a0" stroke-width="7" stroke-linejoin="round"/>
+<line x1="-61.0" y1="208.7" x2="61.0" y2="208.7" stroke="#d9c7a0" stroke-width="4" stroke-opacity=".85"/>
+<line x1="-61.9" y1="245.3" x2="61.9" y2="245.3" stroke="#d9c7a0" stroke-width="4" stroke-opacity=".85"/>
+<line x1="-62.7" y1="279.8" x2="62.7" y2="279.8" stroke="#d9c7a0" stroke-width="4" stroke-opacity=".85"/>
+<line x1="-63.6" y1="312.3" x2="63.6" y2="312.3" stroke="#d9c7a0" stroke-width="4" stroke-opacity=".85"/>
+<line x1="-64.3" y1="343.1" x2="64.3" y2="343.1" stroke="#d9c7a0" stroke-width="4" stroke-opacity=".85"/>
+<line x1="-65.7" y1="399.5" x2="65.7" y2="399.5" stroke="#d9c7a0" stroke-width="4" stroke-opacity=".85"/>
+<line x1="-67.0" y1="449.7" x2="67.0" y2="449.7" stroke="#d9c7a0" stroke-width="4" stroke-opacity=".85"/>
+<line x1="-68.6" y1="515.0" x2="68.6" y2="515.0" stroke="#d9c7a0" stroke-width="4" stroke-opacity=".85"/>
+<path d="M-56,166 L-62,70 Q-64,26 -34,22 L34,22 Q64,26 62,70 L56,166 Z" fill="#101014" stroke="#d9c7a0" stroke-width="9" stroke-linejoin="round"/>
+<ellipse cx="-86" cy="62" rx="10" ry="14" fill="#d9c7a0"/>
+<ellipse cx="86" cy="62" rx="10" ry="14" fill="#d9c7a0"/>
+<ellipse cx="-86" cy="92" rx="10" ry="14" fill="#d9c7a0"/>
+<ellipse cx="86" cy="92" rx="10" ry="14" fill="#d9c7a0"/>
+<ellipse cx="-86" cy="122" rx="10" ry="14" fill="#d9c7a0"/>
+<ellipse cx="86" cy="122" rx="10" ry="14" fill="#d9c7a0"/>
+<circle cx="0" cy="700" r="46" fill="#000" stroke="#d9c7a0" stroke-width="7"/>
+<circle cx="0" cy="700" r="60" fill="none" stroke="#d9c7a0" stroke-width="4" stroke-opacity=".85"/>
+<circle cx="0" cy="700" r="74" fill="none" stroke="#d9c7a0" stroke-width="3" stroke-dasharray="9 8" stroke-opacity=".7"/>
+<path d="M30,765 C95,745 150,770 138,820 C122,862 70,850 48,812" fill="none" stroke="#d9c7a0" stroke-width="5" stroke-opacity=".8"/>
+<rect x="-92" y="852" width="184" height="30" rx="8" fill="#050507" stroke="#d9c7a0" stroke-width="4"/>
+</g></g></svg>
+        <span class="logo-name">DigitaHinos FingerStyle</span>
+    </div>
+    <div class="file-name" id="fileName"></div>
+    <div class="header-right">
+        <div class="synth-badge" id="synthBadge"><span class="dot"></span>Carregando…</div>
+        <button class="hbtn primary" id="hinosBtn" title="Escolher um hino">
+            <svg viewBox="0 0 24 24"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg><span>Hinos</span>
+        </button>
+        <button class="hbtn install" id="btnInstall" title="Instalar como aplicativo">
+            <svg viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg><span>Instalar</span>
+        </button>
+        <button class="hbtn pix" id="btnPix" title="Apoiar o projeto com um Pix">
+            <svg viewBox="0 0 24 24"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg><span>Pix</span>
+        </button>
+    </div>
+</header>
+
+<span id="noteCountBadge" style="display:none"></span>
+<div class="view" id="viewPlayer">
+    <div class="main-container" id="mainContainer">
+        <!-- moldura 16:9: partitura / tablatura dinâmica -->
+        <div class="canvas-container" id="canvasContainer"><div id="scorePaper"></div></div>
+        <!-- violão -->
+        <div class="piano-container" id="guitarPane"><canvas id="pianoCanvas"></canvas></div>
+
+        <div class="welcome-screen" id="welcomeScreen">
+            <svg class="welcome-icon" viewBox="-240 0 480 960" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><defs><linearGradient id="gbody" x1="-200" y1="0" x2="200" y2="0" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#08080b"/><stop offset=".5" stop-color="#23232b"/><stop offset="1" stop-color="#08080b"/></linearGradient></defs><g transform="rotate(0 0 480)">
+<path d="M66.0,500.0 C120.0,495.0 165.0,540.0 168.0,610.0 C168.0,655.0 150.0,670.0 152.0,705.0 C154.0,760.0 215.0,775.0 215.0,860.0 C215.0,930.0 130.0,962.0 0.0,962.0 C-130.0,962.0 -215.0,930.0 -215.0,860.0 C-215.0,775.0 -154.0,760.0 -152.0,705.0 C-150.0,670.0 -166.0,655.0 -164.0,630.0 C-164.0,610.0 -150.0,595.0 -132.0,590.0 C-105.0,582.0 -80.0,570.0 -62.0,548.0 Z" fill="url(#gbody)" stroke="#d9c7a0" stroke-width="13" stroke-linejoin="round"/>
+<path d="M61.4,516.0 C111.6,511.3 153.5,553.2 156.2,618.3 C156.2,660.1 139.5,674.1 141.4,706.6 C143.2,757.8 200.0,771.7 200.0,850.8 C200.0,915.9 120.9,945.6 0.0,945.6 C-120.9,945.6 -200.0,915.9 -200.0,850.8 C-200.0,771.7 -143.2,757.8 -141.4,706.6 C-139.5,674.1 -154.4,660.1 -152.5,636.9 C-152.5,618.3 -139.5,604.3 -122.8,599.7 C-97.7,592.2 -74.4,581.1 -57.7,560.6 Z" fill="none" stroke="#d9c7a0" stroke-opacity=".6" stroke-width="5"/>
+<path d="M-58,170 L58,170 L70,640 L-70,640 Z" fill="#08080b" stroke="#d9c7a0" stroke-width="7" stroke-linejoin="round"/>
+<line x1="-61.0" y1="208.7" x2="61.0" y2="208.7" stroke="#d9c7a0" stroke-width="4" stroke-opacity=".85"/>
+<line x1="-61.9" y1="245.3" x2="61.9" y2="245.3" stroke="#d9c7a0" stroke-width="4" stroke-opacity=".85"/>
+<line x1="-62.7" y1="279.8" x2="62.7" y2="279.8" stroke="#d9c7a0" stroke-width="4" stroke-opacity=".85"/>
+<line x1="-63.6" y1="312.3" x2="63.6" y2="312.3" stroke="#d9c7a0" stroke-width="4" stroke-opacity=".85"/>
+<line x1="-64.3" y1="343.1" x2="64.3" y2="343.1" stroke="#d9c7a0" stroke-width="4" stroke-opacity=".85"/>
+<line x1="-65.7" y1="399.5" x2="65.7" y2="399.5" stroke="#d9c7a0" stroke-width="4" stroke-opacity=".85"/>
+<line x1="-67.0" y1="449.7" x2="67.0" y2="449.7" stroke="#d9c7a0" stroke-width="4" stroke-opacity=".85"/>
+<line x1="-68.6" y1="515.0" x2="68.6" y2="515.0" stroke="#d9c7a0" stroke-width="4" stroke-opacity=".85"/>
+<path d="M-56,166 L-62,70 Q-64,26 -34,22 L34,22 Q64,26 62,70 L56,166 Z" fill="#101014" stroke="#d9c7a0" stroke-width="9" stroke-linejoin="round"/>
+<ellipse cx="-86" cy="62" rx="10" ry="14" fill="#d9c7a0"/>
+<ellipse cx="86" cy="62" rx="10" ry="14" fill="#d9c7a0"/>
+<ellipse cx="-86" cy="92" rx="10" ry="14" fill="#d9c7a0"/>
+<ellipse cx="86" cy="92" rx="10" ry="14" fill="#d9c7a0"/>
+<ellipse cx="-86" cy="122" rx="10" ry="14" fill="#d9c7a0"/>
+<ellipse cx="86" cy="122" rx="10" ry="14" fill="#d9c7a0"/>
+<circle cx="0" cy="700" r="46" fill="#000" stroke="#d9c7a0" stroke-width="7"/>
+<circle cx="0" cy="700" r="60" fill="none" stroke="#d9c7a0" stroke-width="4" stroke-opacity=".85"/>
+<circle cx="0" cy="700" r="74" fill="none" stroke="#d9c7a0" stroke-width="3" stroke-dasharray="9 8" stroke-opacity=".7"/>
+<path d="M30,765 C95,745 150,770 138,820 C122,862 70,850 48,812" fill="none" stroke="#d9c7a0" stroke-width="5" stroke-opacity=".8"/>
+<rect x="-92" y="852" width="184" height="30" rx="8" fill="#050507" stroke="#d9c7a0" stroke-width="4"/>
+<line x1="-50" y1="170" x2="-65" y2="860" stroke="#e7e1d1" stroke-width="2.6" stroke-opacity=".8"/>
+<line x1="-30" y1="170" x2="-39" y2="860" stroke="#e7e1d1" stroke-width="2.6" stroke-opacity=".8"/>
+<line x1="-10" y1="170" x2="-13" y2="860" stroke="#e7e1d1" stroke-width="2.6" stroke-opacity=".8"/>
+<line x1="10" y1="170" x2="13" y2="860" stroke="#e7e1d1" stroke-width="2.6" stroke-opacity=".8"/>
+<line x1="30" y1="170" x2="39" y2="860" stroke="#e7e1d1" stroke-width="2.6" stroke-opacity=".8"/>
+<line x1="50" y1="170" x2="65" y2="860" stroke="#e7e1d1" stroke-width="2.6" stroke-opacity=".8"/>
+</g></svg>
+            <h1>DigitaHinos FingerStyle</h1>
+            <p>Escolha um hino e veja o violão tocando junto com a partitura e a tablatura.</p>
+            <button class="welcome-btn" onclick="openHinos()">📖 Escolher hino</button>
+        </div>
+        <div class="loading-overlay" id="loadingOverlay"><div class="spinner"></div></div>
+    </div>
+
+    <div class="controls-bar">
+        <div class="transport-group">
+            <button class="control-btn" id="stopBtn" title="Parar"><svg viewBox="0 0 24 24"><rect x="6" y="6" width="12" height="12" rx="1"/></svg></button>
+            <button class="control-btn play-btn" id="playBtn" title="Tocar / pausar">
+                <svg viewBox="0 0 24 24" id="playIcon"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+                <svg viewBox="0 0 24 24" id="pauseIcon" style="display:none"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg>
+            </button>
+            <button class="control-btn" id="rewindBtn" title="Voltar ao início"><svg viewBox="0 0 24 24"><path d="M11 19l-9-7 9-7v14z"/><path d="M22 19l-9-7 9-7v14z"/></svg></button>
+        </div>
+        <div class="progress-container">
+            <span class="time-display" id="currentTime">0:00</span>
+            <div class="progress-bar" id="progressBar"><div class="progress-fill" id="progressFill"></div></div>
+            <span class="time-display" id="totalTime">0:00</span>
+        </div>
+        <div class="speed-control" title="O que aparece na tela">
+            <span>Tela:</span>
+            <select id="viewSel" aria-label="O que mostrar na tela">
+                <option value="both">Violão + partitura</option>
+                <option value="violao">Só o violão</option>
+                <option value="partitura">Só a partitura</option>
+            </select>
+        </div>
+        <div class="speed-control" title="Como a partitura é mostrada">
+            <span>Partitura:</span>
+            <select id="scSel" aria-label="Formato da partitura">
+                <option value="both">Notação + tablatura</option>
+                <option value="tab">Só tablatura</option>
+            </select>
+        </div>
+        <button class="opt-toggle" id="optBtn" type="button">⚙ Opções</button>
+        <div class="opts-panel" id="optsPanel">
+            <div class="speed-control"><span>Vel:</span>
+                <select id="speedSelect">
+                    <option value="0.25">0.25x</option><option value="0.5">0.5x</option>
+                    <option value="0.75">0.75x</option><option value="1" selected>1x</option>
+                    <option value="1.25">1.25x</option><option value="1.5">1.5x</option>
+                    <option value="2">2x</option>
+                </select>
+            </div>
+            <div class="speed-control" title="Som do violão"><span>Som:</span><select id="vgType" aria-label="Tipo de violão"></select></div>
+        <div class="speed-control" id="modeCtl" style="display:none"><span>Voz:</span><select id="modeSel" aria-label="Voz a executar"></select></div>
+        <div class="speed-control" id="keyCtl" style="display:none" title="Tom em que o hino é tocado (o app escolhe o mais fácil no violão)"><span>Tom:</span><select id="keySel" aria-label="Tom"></select></div>
+        <div class="speed-control" id="harmCtl" style="display:none" title="Simples: acordes básicos. Melhor encaixe: o acorde que combina melhor com o soprano e o baixo de cada tempo. Cantoral: as cifras do livro (hinos com cifra disponível)"><span>Harmonia:</span><select id="harmSel" aria-label="Harmonia"><option value="0">Simples</option><option value="1">Melhor encaixe</option><option value="2">Cantoral (livro)</option></select></div>
+        <div class="speed-control" id="styleCtl" style="display:none" title="Básico: melodia + baixo. Profissional: dedilhado (fingerstyle simplificado) com notas do acorde entre o baixo e a melodia"><span>Estilo:</span><select id="styleSel" aria-label="Estilo"><option value="basic">Fingerstyle · básico</option><option value="pro">Fingerstyle · profissional (dedilhado)</option><option value="acomp">Acompanhamento (batida / dedilhado)</option></select></div>
+        <div class="speed-control" id="accCtl" style="display:none" title="Batida: acordes tocados com a mão direita (golpes). Dedilhado: acordes tocados corda a corda"><span>Ritmo:</span><select id="accSel" aria-label="Ritmo do acompanhamento"><option value="bat">Batida</option><option value="ded">Dedilhado</option></select></div>
+        <div class="speed-control" id="contCtl" style="display:none" title="Simples: um movimento por tempo do compasso (6/8 = 6 movimentos). Subdividida: 1 e 2 e 3 e... (o dobro de movimentos). Mista: começo simples e fim subdividido"><span>Contagem:</span><select id="contSel" aria-label="Contagem do acompanhamento"><option value="simple">Simples</option><option value="sub">Subdividida</option><option value="mix">Mista</option></select></div>
+        <div class="speed-control" id="bgCtl" style="display:none" title="Toca só o soprano ao fundo, para você ouvir o acompanhamento junto com o canto"><span>Soprano ao fundo:</span><select id="bgSel" aria-label="Soprano ao fundo"><option value="flute">Flauta</option><option value="violin">Violino</option><option value="harmonium">Harmônio</option><option value="violao">Violão</option><option value="off">Desligado</option></select></div>
+            <div class="volume-control">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#9aa0d4" stroke-width="2"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/></svg>
+                <input type="range" class="volume-slider" id="volumeSlider" min="0" max="100" value="70">
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- HINOS -->
+<div class="pb-modal" id="mHinos" hidden>
+  <div class="pb-sheet wide">
+    <div class="pb-head"><h2>📖 Hinos</h2><button class="pb-x" data-close>✕</button></div>
+    <div class="pb-body">
+      <input type="search" id="hinoQ" class="hino-search" placeholder="Buscar por número ou título…" autocomplete="off">
+      <div id="hinoList"></div>
+    </div>
+  </div>
+</div>
+
+<!-- COMO INSTALAR (quando o navegador não oferece o botão automático) -->
+<div class="pb-modal" id="mInstall" hidden>
+  <div class="pb-sheet">
+    <div class="pb-head"><h2>⬇ Instalar o aplicativo</h2><button class="pb-x" data-close>✕</button></div>
+    <div class="pb-body">
+      <ul class="help-list">
+        <li><b>iPhone / iPad (Safari):</b> toque em <b>Compartilhar</b> e depois em <b>Adicionar à Tela de Início</b>.</li>
+        <li><b>Android (Chrome):</b> abra o menu <b>⋮</b> e toque em <b>Instalar aplicativo</b> (ou <b>Adicionar à tela inicial</b>).</li>
+        <li><b>Computador (Chrome / Edge):</b> clique no ícone de instalação na barra de endereços.</li>
+      </ul>
+    </div>
+  </div>
+</div>
+
+<!-- PIX -->
+<div id="pixModal" class="hidden">
+    <div class="pix-box">
+        <div class="pix-title">☕ PIX</div>
+        <div class="pix-sub">Ajude a manter o projeto vivo!</div>
+        <div class="pix-key-box">
+            <div class="pix-key-label">Chave PIX</div>
+            <div class="pix-key" id="pixKeyText">meuidwp@duck.com</div>
+        </div>
+        <button class="pix-copy-btn" id="btnCopyPix">Copiar chave</button><br>
+        <button class="pix-close" id="btnClosePix">Fechar</button>
+    </div>
+</div>
+
+<!-- campos internos usados pelo motor da partitura (não aparecem na tela) -->
+<div hidden>
+    <input id="scoreBpm" value="120">
+    <select id="scoreTimeSig"><option>4/4</option><option>3/4</option><option>2/4</option><option>6/8</option></select>
+</div>
+
+<div class="error-toast" id="errorToast"></div>
+<div class="success-toast" id="successToast"></div>
+
+
+<script>
+/* ======================== MUSICXML (.xml / .musicxml / .mxl) ======================== */
+const SATB_NAMES=['Soprano','Contralto','Tenor','Baixo'];
+
+// ---- ZIP: o .mxl é um ZIP com o XML da partitura dentro ----
+function zipEntries(buf){
+    const u8=new Uint8Array(buf), dv=new DataView(buf);
+    let e=u8.length-22; while(e>=0&&dv.getUint32(e,true)!==0x06054b50) e--;
+    if(e<0) throw new Error('Arquivo .mxl inválido');
+    const n=dv.getUint16(e+10,true); let p=dv.getUint32(e+16,true); const out=[];
+    for(let i=0;i<n;i++){
+        if(dv.getUint32(p,true)!==0x02014b50) break;
+        const method=dv.getUint16(p+10,true), csize=dv.getUint32(p+20,true), usize=dv.getUint32(p+24,true);
+        const nl=dv.getUint16(p+28,true), el=dv.getUint16(p+30,true), cl=dv.getUint16(p+32,true), lho=dv.getUint32(p+42,true);
+        out.push({name:new TextDecoder().decode(u8.subarray(p+46,p+46+nl)),method,csize,usize,lho});
+        p+=46+nl+el+cl;
+    }
+    return {u8,dv,out};
+}
+async function zipRead(z,ent){
+    const {u8,dv}=z, p=ent.lho, start=p+30+dv.getUint16(p+26,true)+dv.getUint16(p+28,true);
+    const data=u8.subarray(start,start+ent.csize);
+    if(ent.method===0) return data;
+    if(ent.method!==8) throw new Error('Compressão não suportada');
+    if(typeof DecompressionStream==='function'){
+        try{ const r=new Response(new Blob([data]).stream().pipeThrough(new DecompressionStream('deflate-raw'))); return new Uint8Array(await r.arrayBuffer()); }catch(e){}
+    }
+    return inflateRaw(data,ent.usize);
+}
+// descompactador próprio (reserva, para WebViews antigos sem DecompressionStream)
+function inflateRaw(src,usize){
+    const LB=[3,4,5,6,7,8,9,10,11,13,15,17,19,23,27,31,35,43,51,59,67,83,99,115,131,163,195,227,258],
+          LE=[0,0,0,0,0,0,0,0,1,1,1,1,2,2,2,2,3,3,3,3,4,4,4,4,5,5,5,5,0],
+          DB=[1,2,3,4,5,7,9,13,17,25,33,49,65,97,129,193,257,385,513,769,1025,1537,2049,3073,4097,6145,8193,12289,16385,24577],
+          DE=[0,0,0,0,1,1,2,2,3,3,4,4,5,5,6,6,7,7,8,8,9,9,10,10,11,11,12,12,13,13],
+          ORD=[16,17,18,0,8,7,9,6,10,5,11,4,12,3,13,2,14,1,15];
+    let out=new Uint8Array(usize||src.length*4), op=0, ip=0, bit=0, bc=0;
+    const grow=n=>{ if(op+n>out.length){ const t=new Uint8Array(Math.max(out.length*2,op+n)); t.set(out); out=t; } };
+    const bits=n=>{ while(bc<n){ bit|=src[ip++]<<bc; bc+=8; } const v=bit&((1<<n)-1); bit>>>=n; bc-=n; return v; };
+    const build=lens=>{ const count=new Uint16Array(16), symbol=new Uint16Array(lens.length), offs=new Uint16Array(16);
+        for(let i=0;i<lens.length;i++) count[lens[i]]++; count[0]=0;
+        for(let i=1;i<16;i++) offs[i]=offs[i-1]+count[i-1];
+        for(let s=0;s<lens.length;s++) if(lens[s]) symbol[offs[lens[s]]++]=s;
+        return {count,symbol}; };
+    const decode=h=>{ let code=0,first=0,index=0; for(let len=1;len<16;len++){ code|=bits(1); const c=h.count[len]; if(code-c<first) return h.symbol[index+(code-first)]; index+=c; first+=c; first<<=1; code<<=1; } throw new Error('inflate'); };
+    let last;
+    do{
+        last=bits(1); const type=bits(2);
+        if(type===0){ bit=0; bc=0; const len=src[ip]|(src[ip+1]<<8); ip+=4; grow(len); out.set(src.subarray(ip,ip+len),op); op+=len; ip+=len; }
+        else if(type===3) throw new Error('inflate');
+        else{
+            let lh,dh;
+            if(type===1){ const l=new Uint8Array(288); for(let i=0;i<288;i++) l[i]=i<144?8:i<256?9:i<280?7:8; lh=build(l); dh=build(new Uint8Array(30).fill(5)); }
+            else{
+                const nl=bits(5)+257, nd=bits(5)+1, nc=bits(4)+4, cl=new Uint8Array(19);
+                for(let i=0;i<nc;i++) cl[ORD[i]]=bits(3);
+                const ch=build(cl), lens=new Uint8Array(nl+nd); let i=0;
+                while(i<nl+nd){ const s=decode(ch); if(s<16) lens[i++]=s; else{ let rep,val=0; if(s===16){ val=lens[i-1]; rep=3+bits(2); } else if(s===17) rep=3+bits(3); else rep=11+bits(7); while(rep--) lens[i++]=val; } }
+                lh=build(lens.subarray(0,nl)); dh=build(lens.subarray(nl));
+            }
+            for(;;){
+                const s=decode(lh);
+                if(s<256){ grow(1); out[op++]=s; }
+                else if(s===256) break;
+                else{ const li=s-257, len=LB[li]+bits(LE[li]), ds=decode(dh), dist=DB[ds]+bits(DE[ds]); grow(len); for(let k=0;k<len;k++){ out[op]=out[op-dist]; op++; } }
+            }
+        }
+    }while(!last);
+    return out.subarray(0,op);
+}
+function decodeXml(u8){
+    if(u8[0]===0xFF&&u8[1]===0xFE) return new TextDecoder('utf-16le').decode(u8);
+    if(u8[0]===0xFE&&u8[1]===0xFF) return new TextDecoder('utf-16be').decode(u8);
+    let enc='utf-8'; const m=/encoding\s*=\s*["']([\w-]+)/i.exec(String.fromCharCode.apply(null,u8.subarray(0,200)));
+    if(m) enc=m[1];
+    try{ return new TextDecoder(enc).decode(u8).replace(/^\uFEFF/,''); }catch(e){ return new TextDecoder('utf-8').decode(u8).replace(/^\uFEFF/,''); }
+}
+async function readScoreXmlText(buf){
+    const u8=new Uint8Array(buf);
+    if(u8[0]===0x50&&u8[1]===0x4B){
+        const z=zipEntries(buf); let target=null;
+        const cont=z.out.find(e=>/^META-INF\/container\.xml$/i.test(e.name));
+        if(cont){ const m=/full-path\s*=\s*["']([^"']+)["']/.exec(decodeXml(await zipRead(z,cont))); if(m) target=z.out.find(e=>e.name===m[1]); }
+        if(!target) target=z.out.find(e=>/\.(xml|musicxml)$/i.test(e.name)&&!/^META-INF\//i.test(e.name));
+        if(!target) throw new Error('Nenhuma partitura dentro do .mxl');
+        return decodeXml(await zipRead(z,target));
+    }
+    return decodeXml(u8);
+}
+
+// ---- MusicXML (partwise) → notas {midi,startTime,endTime,duration,velocity,track} ----
+function parseMusicXML(text){
+    const doc=new DOMParser().parseFromString(text,'application/xml');
+    if(doc.getElementsByTagName('parsererror').length) throw new Error('XML inválido');
+    const root=doc.documentElement;
+    if(root.nodeName==='score-timewise') throw new Error('MusicXML "timewise" não suportado — exporte como "partwise"');
+    if(root.nodeName!=='score-partwise') throw new Error('Não é um arquivo MusicXML');
+    const ch=(el,n)=>{ const r=[]; for(const c of el.children) if(c.nodeName===n) r.push(c); return r; };
+    const c1=(el,n)=>{ for(const c of el.children) if(c.nodeName===n) return c; return null; };
+    const tx=(el,n)=>{ const c=el&&c1(el,n); return c?c.textContent.trim():''; };
+    const nm=(el,n,d)=>{ const v=parseFloat(tx(el,n)); return isFinite(v)?v:d; };
+    const STEP={C:0,D:2,E:4,F:5,G:7,A:9,B:11};
+    const DYN={ppp:.3,pp:.4,p:.5,mp:.6,mf:.7,f:.8,ff:.9,fff:.97,sf:.9,sfz:.9,fp:.8};
+    const pnames={}; const pl=c1(root,'part-list');
+    if(pl) ch(pl,'score-part').forEach(sp=>{ pnames[sp.getAttribute('id')]=tx(sp,'part-name')||tx(sp,'part-abbreviation'); });
+    const parts=ch(root,'part'), MI=[], evs=[];
+    const tempoOf=e=>{
+        const snd=e.nodeName==='sound'?e:c1(e,'sound');
+        if(snd&&snd.getAttribute('tempo')) return parseFloat(snd.getAttribute('tempo'));
+        const met=e.getElementsByTagName('metronome')[0];
+        if(met){ const pm=parseFloat(tx(met,'per-minute')); if(pm>0){ let q={whole:4,half:2,quarter:1,eighth:.5,'16th':.25}[tx(met,'beat-unit')]||1; if(c1(met,'beat-unit-dot')) q*=1.5; return pm*q; } }
+        return 0;
+    };
+    parts.forEach((part,pi)=>{
+        let div=1,beats=4,bt=4,trans=0,vel=.7;
+        ch(part,'measure').forEach((m,mi)=>{
+            const info=MI[mi]||(MI[mi]={ext:0,nom:4,fwd:false,bwd:false,volta:null,tempos:[],implicit:false});
+            if(m.getAttribute('implicit')==='yes') info.implicit=true;
+            let cur=0,lastOn=0,ext=0;
+            for(const e of m.children){
+                const t=e.nodeName;
+                if(t==='attributes'){
+                    const d=nm(e,'divisions',0); if(d>0) div=d;
+                    const ti=c1(e,'time'); if(ti){ beats=parseInt(tx(ti,'beats'))||beats; bt=parseInt(tx(ti,'beat-type'))||bt; if(!info.time) info.time=beats+'/'+bt; }
+                    const k=c1(e,'key'); if(k&&info.fifths===undefined){ const f=parseInt(tx(k,'fifths')); if(isFinite(f)) info.fifths=f; }
+                    const tr=c1(e,'transpose'); if(tr) trans=(parseInt(tx(tr,'chromatic'))||0)+12*(parseInt(tx(tr,'octave-change'))||0);
+                } else if(t==='direction'||t==='sound'){
+                    const bpm=tempoOf(e); if(bpm>0&&pi===0) info.tempos.push({pos:cur/div,bpm});
+                    if(t==='direction'){ const dy=e.getElementsByTagName('dynamics')[0]; if(dy) for(const d of dy.children) if(DYN[d.nodeName]) vel=DYN[d.nodeName]; }
+                } else if(t==='backup') cur-=nm(e,'duration',0);
+                else if(t==='forward'){ cur+=nm(e,'duration',0); ext=Math.max(ext,cur); }
+                else if(t==='barline'){
+                    const rp=c1(e,'repeat'); if(rp){ if(rp.getAttribute('direction')==='forward') info.fwd=true; else info.bwd=true; }
+                    const en=c1(e,'ending'); if(en){ if(en.getAttribute('type')==='start') info.endStart=(en.getAttribute('number')||'1').split(/[ ,]+/).map(s=>parseInt(s)).filter(x=>x>0); else info.endStop=true; }
+                } else if(t==='note'){
+                    if(c1(e,'grace')) continue;
+                    const isChord=!!c1(e,'chord'), dur=nm(e,'duration',0), on=isChord?lastOn:cur;
+                    if(!isChord) lastOn=cur;
+                    const pitch=c1(e,'pitch');
+                    if(pitch&&!c1(e,'rest')&&!c1(e,'cue')&&dur>0&&STEP[tx(pitch,'step')]!==undefined){
+                        const midi=STEP[tx(pitch,'step')]+Math.round(nm(pitch,'alter',0))+(parseInt(tx(pitch,'octave'))+1)*12+trans;
+                        let ties=ch(e,'tie').map(x=>x.getAttribute('type'));
+                        if(!ties.length){ const nt=c1(e,'notations'); if(nt) ties=ch(nt,'tied').map(x=>x.getAttribute('type')); }
+                        evs.push({part:pi,staff:parseInt(tx(e,'staff'))||1,voice:parseInt(tx(e,'voice'))||1,midi,mi,on:on/div,dur:dur/div,tS:ties.includes('start'),tE:ties.includes('stop'),vel,stem:tx(e,'stem')});
+                    }
+                    if(!isChord) cur+=dur;
+                    ext=Math.max(ext,cur);
+                }
+            }
+            info.ext=Math.max(info.ext,ext/div); info.nom=beats*4/bt; info.beats=beats; info.bt=bt;
+        });
+    });
+    const n=MI.length; if(!n) throw new Error('Nenhum compasso encontrado');
+    const len=MI.map(m=>m.ext>1e-6?m.ext:m.nom);
+    let open=null; MI.forEach(m=>{ if(m.endStart) open=m.endStart; m.volta=open; if(m.endStop) open=null; });
+    // ordem de execução (repetições e casas 1ª/2ª)
+    const order=[]; { let i=0,secStart=0,pass=1,jumped=false,guard=0; const taken=new Set();
+        while(i<n&&guard++<n*12){
+            const m=MI[i];
+            if(m.fwd&&!(jumped&&i===secStart)){ secStart=i; pass=1; }
+            jumped=false;
+            if(m.volta&&!m.volta.includes(pass)){ i++; continue; }
+            order.push(i);
+            if(m.bwd){ if(!taken.has(i)){ taken.add(i); i=secStart; pass++; jumped=true; continue; } secStart=i+1; pass=1; }
+            i++;
+        } }
+    if(!order.length) for(let i=0;i<n;i++) order.push(i);
+    const byM=Array.from({length:n},()=>[]); evs.forEach(e=>byM[e.mi].push(e));
+    let acc=0, abs=[], tempos=[];
+    const occ=[];
+    order.forEach(mi=>{
+        occ.push({mi,q:acc});
+        MI[mi].tempos.forEach(t=>tempos.push({q:acc+t.pos,bpm:t.bpm}));
+        byM[mi].forEach(e=>abs.push({...e,s:acc+e.on,e:acc+e.on+e.dur}));
+        acc+=len[mi];
+    });
+    tempos.sort((a,b)=>a.q-b.q);
+    if(!tempos.length||tempos[0].q>0) tempos.unshift({q:0,bpm:tempos.length?tempos[0].bpm:120});
+    const tm=[]; let sec=0;
+    tempos.forEach((t,i)=>{ if(i>0){ const p=tempos[i-1]; sec+=(t.q-p.q)*60/p.bpm; } tm.push({q:t.q,s:sec,bpm:t.bpm}); });
+    const toSec=q=>{ let k=tm.length-1; while(k>0&&tm[k].q>q+1e-9) k--; return tm[k].s+(q-tm[k].q)*60/tm[k].bpm; };
+    const measures=occ.map(o=>({mi:o.mi,s:toSec(o.q),e:toSec(o.q+len[o.mi]),q:len[o.mi],beats:MI[o.mi].beats||4,bt:MI[o.mi].bt||4}));
+    // ligaduras de prolongamento
+    abs.sort((a,b)=>a.s-b.s);
+    const pend=new Map(), merged=[];
+    abs.forEach(x=>{
+        const k=x.part+'|'+x.staff+'|'+x.voice+'|'+x.midi, p=pend.get(k);
+        if(x.tE&&p&&Math.abs(p.e-x.s)<.06){ p.e=x.e; if(!x.tS) pend.delete(k); return; }
+        const nn={part:x.part,staff:x.staff,voice:x.voice,midi:x.midi,s:x.s,e:x.e,vel:x.vel,stem:x.stem};
+        merged.push(nn); if(x.tS) pend.set(k,nn); else pend.delete(k);
+    });
+    // ---- Reconhecimento SATB pela pauta (como nos hinários) ----
+    // pauta de cima: soprano (nota de cima / haste para cima) e contralto (nota de baixo / haste para baixo)
+    // pauta de baixo: tenor (nota de cima / haste para cima) e baixo (nota de baixo / haste para baixo)
+    const GR=new Map(); merged.forEach(x=>{ const k=x.part+'|'+x.staff; if(!GR.has(k)) GR.set(k,{part:x.part,staff:x.staff,notes:[]}); GR.get(k).notes.push(x); });
+    const grp=[...GR.values()].sort((a,b)=>a.part-b.part||a.staff-b.staff);
+    const avgN=ns=>ns.reduce((a,x)=>a+x.midi,0)/ns.length;
+    const splitStaff=g=>{
+        const vs=[...new Set(g.notes.map(x=>x.voice))].sort((a,b)=>a-b), topV=vs[0];
+        const byOn=new Map(); g.notes.forEach(x=>{ const k=x.s.toFixed(3); if(!byOn.has(k)) byOn.set(k,[]); byOn.get(k).push(x); });
+        const up=[], dn=[], sr=x=>x.stem==='up'?0:x.stem==='down'?2:1;
+        byOn.forEach(a=>{
+            if(a.length>=2){
+                a.sort((p,q)=>q.midi-p.midi||sr(p)-sr(q)||p.voice-q.voice);
+                a.forEach((x,i)=>{ if(i===0) up.push(x); else if(i===a.length-1) dn.push(x); else (x.stem==='down'?dn:up).push(x); });
+            } else {
+                const x=a[0];
+                if(x.stem==='double'){ up.push(x); dn.push({...x,dup:true}); }
+                else if(x.stem==='down') dn.push(x);
+                else if(x.stem==='up') up.push(x);
+                else (vs.length>1&&x.voice!==topV?dn:up).push(x);   // sem haste: voz 1 = cima, demais = baixo; nota única = cima
+            }
+        });
+        return [up,dn];
+    };
+    let lines, voiceNames, byStaff=false;
+    if(grp.length===2){
+        if(avgN(grp[1].notes)>avgN(grp[0].notes)) grp.reverse();
+        lines=[...splitStaff(grp[0]),...splitStaff(grp[1])].map((ns,i)=>({part:0,staff:i,voice:i,notes:ns}));
+        voiceNames=SATB_NAMES.slice(); byStaff=true;
+    }
+    if(!byStaff){
+    // linhas melódicas = (parte, pauta, voz)
+    const L=new Map(); merged.forEach(x=>{ const k=x.part+'|'+x.staff+'|'+x.voice; if(!L.has(k)) L.set(k,{part:x.part,staff:x.staff,voice:x.voice,notes:[]}); L.get(k).notes.push(x); });
+    lines=[...L.values()].sort((a,b)=>a.part-b.part||a.staff-b.staff||a.voice-b.voice);
+    if(!lines.length) throw new Error('Nenhuma nota encontrada');
+    const perPart={}; lines.forEach(l=>perPart[l.part]=(perPart[l.part]||0)+1);
+    if(lines.length<4){ // acordes dentro de uma voz (ex.: soprano+contralto na mesma pauta) → separa por altura
+        lines=lines.flatMap(l=>{
+            const g=new Map(); l.notes.forEach(x=>{ const k=x.s.toFixed(3); if(!g.has(k)) g.set(k,[]); g.get(k).push(x); });
+            const mx=Math.min(4,Math.max(...[...g.values()].map(a=>a.length)));
+            if(mx<=1) return [l];
+            const subs=Array.from({length:mx},()=>({part:l.part,staff:l.staff,voice:l.voice,notes:[],split:true}));
+            g.forEach(a=>{ a.sort((p,q)=>q.midi-p.midi); subs.forEach((s,r)=>s.notes.push({...a[Math.min(r,a.length-1)],dup:r>=a.length})); });
+            return subs;
+        });
+    }
+    const avg=l=>l.notes.reduce((a,x)=>a+x.midi,0)/l.notes.length;
+    const cls=s=>{ s=(s||'').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').trim(); return /sopran/.test(s)?0:/contralt|alto/.test(s)||/^a\.?$/.test(s)?1:/tenor/.test(s)||/^t\.?$/.test(s)?2:/bass|baix/.test(s)||/^b\.?$/.test(s)?3:-1; };
+        if(lines.length===4){
+        const cs=lines.map(l=>perPart[l.part]===1&&!l.split?cls(pnames[parts[l.part].getAttribute('id')]):-1);
+        if(cs.every(c=>c>=0)&&new Set(cs).size===4) lines=cs.map((c,i)=>[c,lines[i]]).sort((a,b)=>a[0]-b[0]).map(a=>a[1]);
+        else lines.sort((a,b)=>avg(b)-avg(a));
+        voiceNames=SATB_NAMES.slice();
+    } else {
+        lines.sort((a,b)=>avg(b)-avg(a));
+        if(lines.length>8){ const extra=lines.splice(7); extra.forEach(l=>lines[6].notes.push(...l.notes)); }
+        voiceNames=lines.map((_,i)=>'Voz '+(i+1));
+    }
+    }
+    const notes=[];
+    lines.forEach((l,v)=>l.notes.forEach(x=>{ const a=toSec(x.s), b=toSec(x.e); if(b-a>.01) notes.push({midi:Math.max(0,Math.min(127,x.midi)),startTime:a,endTime:b,duration:b-a,velocity:x.vel,track:v,dup:!!x.dup}); }));
+    notes.sort((a,b)=>a.startTime-b.startTime);
+    if(!notes.length) throw new Error('Nenhuma nota encontrada');
+    const first=f=>{ const m=MI.find(x=>x[f]!==undefined); return m?m[f]:null; };
+    const _m0=measures[0], _nom=_m0?_m0.beats*4/_m0.bt:0, pickup=(_m0&&_nom&&_m0.q>1e-6&&_m0.q<_nom-0.01)?_nom-_m0.q:0;   // compasso de anacruse (incompleto)
+    return {notes,duration:Math.max(...notes.map(x=>x.endTime)),bpm:tm[0].bpm,key:first('fifths'),timeSig:first('time'),voiceNames,measures,tm,pickup};
+}
+function isMidiBuf(buf){ const u=new Uint8Array(buf,0,Math.min(4,buf.byteLength)); return u[0]===0x4D&&u[1]===0x54&&u[2]===0x68&&u[3]===0x64; }
+async function parseAnyScore(buf){ return isMidiBuf(buf)?parseMidiFile(buf):parseMusicXML(await readScoreXmlText(buf)); }
+</script>
+<script>
+// ======================== MIDI PARSER ========================
+class MidiParser {
+    constructor(buf){ this.buf=buf; this.v=new DataView(buf); this.p=0; }
+    u8(){ return this.v.getUint8(this.p++); }
+    u16(){ const v=this.v.getUint16(this.p); this.p+=2; return v; }
+    u32(){ const v=this.v.getUint32(this.p); this.p+=4; return v; }
+    str(n){ let s=''; for(let i=0;i<n;i++) s+=String.fromCharCode(this.u8()); return s; }
+    vl(){ let v=0,b; do{b=this.u8();v=(v<<7)|(b&0x7F);}while(b&0x80); return v; }
+    parse(){
+        if(this.str(4)!=='MThd') throw new Error('MIDI inválido');
+        this.u32(); const fmt=this.u16(), nt=this.u16(), div=this.u16();
+        const tpb=(div&0x8000)?(div&0xFF):div;
+        const tracks=[]; for(let t=0;t<nt;t++) tracks.push(this.parseTrack());
+        return {tpb, tracks};
+    }
+    parseTrack(){
+        const s=this.str(4), len=this.u32(), end=this.p+len;
+        if(s!=='MTrk'){this.p=end;return[];}
+        const evts=[]; let rs=0;
+        while(this.p<end){
+            const d=this.vl(); let st=this.u8();
+            if(st<0x80){this.p--;st=rs;}else{rs=st;}
+            if(st===0xFF){
+                const mt=this.u8(),ml=this.vl(),data=[];
+                for(let i=0;i<ml;i++) data.push(this.u8());
+                if(mt===0x51&&ml===3) evts.push({d,type:'tempo',tempo:(data[0]<<16)|(data[1]<<8)|data[2]});
+                else evts.push({d,type:'meta'});
+            } else if(st===0xF0||st===0xF7){
+                const sl=this.vl(); for(let i=0;i<sl;i++) this.u8();
+            } else if(st>=0x80){
+                const ch=st&0x0F, et=st&0xF0;
+                if(et===0x80){const n=this.u8(),v=this.u8();evts.push({d,type:'noteOff',ch,note:n,vel:v});}
+                else if(et===0x90){const n=this.u8(),v=this.u8();evts.push({d,type:'noteOn',ch,note:n,vel:v});}
+                else if(et===0xA0||et===0xB0||et===0xE0){this.u8();this.u8();}
+                else if(et===0xC0||et===0xD0){this.u8();}
+            }
+        }
+        this.p=end; return evts;
+    }
+}
+
+function parseMidiFile(buf){
+    const pr=new MidiParser(buf), raw=pr.parse();
+    const all=[], active=new Map();
+    let spt=60/(120*raw.tpb), firstTempo=null;
+    raw.tracks.forEach((evts,ti)=>{
+        let time=0;
+        for(const e of evts){
+            time+=e.d*spt;
+            if(e.type==='tempo'){ if(firstTempo===null) firstTempo=e.tempo; spt=e.tempo/(1e6*raw.tpb); }
+            if(e.type==='noteOn'&&e.vel>0){
+                active.set(`${e.ch}-${e.note}`,{midi:e.note,startTime:time,velocity:e.vel,track:ti});
+            } else if(e.type==='noteOff'||(e.type==='noteOn'&&e.vel===0)){
+                const k=`${e.ch}-${e.note}`, on=active.get(k);
+                if(on){const dur=time-on.startTime;if(dur>0.005)all.push({midi:on.midi,startTime:on.startTime,endTime:time,duration:dur,velocity:on.velocity/127,track:on.track});active.delete(k);}
+            }
+        }
+        active.forEach(on=>{const dur=time-on.startTime;if(dur>0.005)all.push({midi:on.midi,startTime:on.startTime,endTime:time,duration:dur,velocity:on.velocity/127,track:on.track});});
+        active.clear();
+    });
+    all.sort((a,b)=>a.startTime-b.startTime);
+    return {notes:all, duration:all.length?Math.max(...all.map(n=>n.endTime)):0, bpm:firstTempo?60e6/firstTempo:120};
+}
+
+// ======================== STATE ========================
+const state={
+    notes:[], duration:0, currentTime:0,
+    isPlaying:false, speed:1, volume:0.7,
+    pianoKeys:[], lowestNote:21, highestNote:108,
+    totalNotes:0, animFrameId:null,
+    pausedAt:0,
+    sampler:null, samplerReady:false, piano:null, synth:null,
+    midiLoaded:false, src:null, mode:"all", keyPc:"auto", t:0, harm:false, cant:false, style:'basic', acc:'bat', cont:'simple', bg:'flute',
+    pps:200  // pixels per second
+};
+
+// ======================== DOM ========================
+const pianoCanvas=document.getElementById('pianoCanvas');
+const pianoCtx=pianoCanvas.getContext('2d');
+const mainContainer=document.getElementById('mainContainer');
+const canvasContainer=document.getElementById('canvasContainer');   // moldura 16:9 da partitura / tablatura
+const guitarPane=document.getElementById('guitarPane');             // área do violão
+const playBtn=document.getElementById('playBtn');
+const stopBtn=document.getElementById('stopBtn');
+const rewindBtn=document.getElementById('rewindBtn');
+const playIcon=document.getElementById('playIcon');
+const pauseIcon=document.getElementById('pauseIcon');
+const progressBar=document.getElementById('progressBar');
+const progressFill=document.getElementById('progressFill');
+const currentTimeEl=document.getElementById('currentTime');
+const totalTimeEl=document.getElementById('totalTime');
+const speedSelect=document.getElementById('speedSelect');
+const volumeSlider=document.getElementById('volumeSlider');
+const fileNameEl=document.getElementById('fileName');
+const noteCountBadge=document.getElementById('noteCountBadge');
+const welcomeScreen=document.getElementById('welcomeScreen');
+const loadingOverlay=document.getElementById('loadingOverlay');
+const errorToast=document.getElementById('errorToast');
+const successToast=document.getElementById('successToast');
+
+// o editor de partitura não existe mais; o motor da partitura ainda usa estes dois valores
+let scoreNotes=[]; const scoreChords=[];
+
+// o que aparece na tela: 'both' (violão + partitura) | 'violao' | 'partitura'
+// formato da partitura: 'both' (notação + tablatura) | 'tab' (só tablatura)
+let VIEW='both', SCMODE='both';
+try{ VIEW=localStorage.getItem('vgView')||'both'; SCMODE=localStorage.getItem('vgScMode')||'both'; }catch(e){}
+if(!['both','violao','partitura'].includes(VIEW)) VIEW='both';
+if(!['both','tab'].includes(SCMODE)) SCMODE='both';
+
+// ======================== UTILS ========================
+const trackColors=['#ff6b6b','#ffd93d','#6bcb77','#ff714d','#ff6bd6','#c49d5c','#ff9671','#00c9a7','#ffc75f','#f9f871','#d65db1','#ba2500','#e8575a','#2ec4b6','#ffe4aa','#caffbf'];
+function gc(i){return trackColors[i%trackColors.length];}
+function isBlk(m){const n=m%12;return n===1||n===3||n===6||n===8||n===10;}
+function nname(m){return ['C','C#','D','D#','E','F','F#','G','G#','A','A#','B'][m%12]+(Math.floor(m/12)-1);}
+function nnameOnly(m){return ['C','C#','D','D#','E','F','F#','G','G#','A','A#','B'][m%12];}
+function fmt(s){const m=Math.floor(s/60);return m+':'+(Math.floor(s%60)<10?'0':'')+Math.floor(s%60);}
+function lighter(hex,a){let r=parseInt(hex.slice(1,3),16),g=parseInt(hex.slice(3,5),16),b=parseInt(hex.slice(5,7),16);return `rgb(${Math.min(255,r+a)},${Math.min(255,g+a)},${Math.min(255,b+a)})`;}
+function toast(msg,type='error'){const t=type==='error'?errorToast:successToast;t.textContent=msg;t.classList.add('show');setTimeout(()=>t.classList.remove('show'),3000);}
+
+// ======================== PIANO SAMPLER (Realistic) ========================
+// Piano de cauda real (Salamander Grand Piano, gravado nota a nota) + leve reverb de sala.
+// Se o piano demorar a carregar (internet lenta), o app toca com o sintetizador e TROCA
+// automaticamente para o piano real assim que terminar de baixar. O MIDI exportado não muda.
+let VG_TYPE='aco'; try{ const t=localStorage.getItem('vgType'); if(t==='aco'||t==='nylon') VG_TYPE=t; }catch(e){}
+const VG_FOLDER={nylon:'guitar-nylon',aco:'guitar-acoustic'};
+function vgSources(){ const f=VG_FOLDER[VG_TYPE]; return [
+    'https://nbrosowsky.github.io/tonejs-instruments/samples/'+f+'/',
+    'https://cdn.jsdelivr.net/gh/nbrosowsky/tonejs-instruments@master/samples/'+f+'/'
+]; }
+// Sondagem: só usa as amostras que realmente existem no servidor (nomes com 's' = sustenido)
+async function guitarUrls(base){
+    const names=[];
+    for(let o=1;o<=6;o++) ['C','Cs','D','Ds','E','F','Fs','G','Gs','A','As','B'].forEach(n=>names.push(n+o));
+    const ok=await Promise.all(names.map(n=>fetch(base+n+'.mp3',{method:'HEAD'}).then(r=>r.ok?n:null).catch(()=>null)));
+    const u={}; ok.filter(Boolean).forEach(n=>{ u[n.replace('s','#')]=n+'.mp3'; });
+    if(!Object.keys(u).length) throw new Error('sem amostras');
+    return u;
+}
+function setSynthBadge(mode){
+    const el=document.getElementById('synthBadge'); if(!el) return;
+    if(mode==='piano')   el.innerHTML='<span class="dot"></span>Violão';
+    else if(mode==='loading') el.innerHTML='<span class="dot" style="background:#1f9d6b"></span>Carregando violão…';
+    else el.innerHTML='<span class="dot" style="background:#3fbf8a"></span>Sintetizador';
+}
+let BG={name:null,smp:null};   // instrumento do soprano ao fundo (Acompanhamento)
+function applyVolume(){
+    const db=Tone.gainToDb(Math.max(0.0001,state.volume));
+    [state.piano,state.synth].forEach(n=>{ try{ if(n) n.volume.value=db; }catch(e){} });
+    try{ if(BG.smp) BG.smp.volume.value=db-3; }catch(e){}
+}
+// cadeia de saída compartilhada: instrumento → reverb leve → limitador → alto-falante
+let outChain=null;
+async function getOutChain(){
+    if(outChain) return outChain;
+    let head=Tone.getDestination();
+    try{
+        const limiter=new Tone.Limiter(-1).connect(head); head=limiter;
+        const reverb=new Tone.Reverb({decay:2.2,preDelay:0.012,wet:0.16}).connect(head);
+        await reverb.generate();
+        head=reverb;
+    }catch(e){}
+    outChain=head; return head;
+}
+async function loadPianoFrom(base,out){
+    const urls=await guitarUrls(base);
+    return new Promise((resolve,reject)=>{
+        let done=false;
+        const t=setTimeout(()=>{ if(!done){ done=true; reject(new Error('timeout')); } },45000);
+        let smp;
+        try{
+            smp=new Tone.Sampler({ urls, baseUrl:base, release:0.8,
+                onload:()=>{ if(done){ try{smp.dispose();}catch(e){} return; } done=true; clearTimeout(t); resolve(smp); },
+                onerror:err=>{ if(!done){ done=true; clearTimeout(t); try{smp.dispose();}catch(e){} reject(err||new Error('erro')); } }
+            }).connect(out);
+        }catch(e){ if(!done){ done=true; clearTimeout(t); reject(e); } }
+    });
+}
+function useSynth(out){
+    if(state.synth) return;
+    const flt=new Tone.Filter(3200,'lowpass').connect(out);
+    state.synth=new Tone.PolySynth(Tone.Synth,{
+        oscillator:{type:'triangle'},
+        envelope:{attack:0.004,decay:0.9,sustain:0.05,release:0.6}
+    }).connect(flt);
+    if(!state.piano){ state.sampler=state.synth; state.samplerReady=true; setSynthBadge('synth'); }
+    applyVolume();
+}
+let samplerPromise=null;
+function initSampler(){
+    if(samplerPromise) return samplerPromise;
+    setSynthBadge('loading');
+    samplerPromise=new Promise(async resolve=>{
+        let out; try{ out=await getOutChain(); }catch(e){ out=Tone.getDestination(); }
+        // 1) tenta carregar o piano real (em segundo plano)
+        const pianoJob=(async()=>{
+            for(const base of vgSources()){
+                try{
+                    const piano=await loadPianoFrom(base,out);
+                    state.piano=piano; applyVolume();
+                    const old=state.synth;
+                    state.sampler=piano; state.samplerReady=true;
+                    if(old){ setTimeout(()=>{ try{old.releaseAll();old.dispose();}catch(e){} state.synth=null; },3000); }
+                    setSynthBadge('piano');
+                    return true;
+                }catch(e){}
+            }
+            return false;
+        })();
+        // 2) espera até 8 s; se não carregou, já libera o app com o sintetizador (e troca depois)
+        const ok=await Promise.race([pianoJob, new Promise(r=>setTimeout(()=>r(null),8000))]);
+        if(ok===null){ useSynth(out); setSynthBadge('loading'); }
+        if(ok===false){ useSynth(out); setSynthBadge('synth'); samplerPromise=null; } // permite tentar de novo depois
+        pianoJob.then(r=>{ if(r===false&&!state.piano){ useSynth(out); setSynthBadge('synth'); samplerPromise=null; } });
+        resolve(!!state.piano);
+    });
+    return samplerPromise;
+}
+// voltou a ter internet e ainda estamos no sintetizador → tenta baixar o piano de novo
+window.addEventListener('online',()=>{ if(!state.piano){ samplerPromise=null; initSampler(); } });
+
+// ======================== LAYOUT DA TELA ========================
+// Partitura em moldura 16:9 (como um vídeo deitado) + violão. Lado a lado em telas largas, empilhados nas demais.
+function placeBox(el,r){
+    if(!r){ el.style.display='none'; return; }
+    el.style.display='block';
+    el.style.left=Math.round(r.x)+'px'; el.style.top=Math.round(r.y)+'px';
+    el.style.width=Math.round(r.w)+'px'; el.style.height=Math.round(r.h)+'px';
+}
+function layoutStage(){
+    const R=mainContainer.getBoundingClientRect(), W=R.width, H=R.height, G=10;
+    let sc=null, gt=null;
+    if(state.midiLoaded&&W>0&&H>0){
+        if(VIEW==='violao') gt={x:0,y:0,w:W,h:H};
+        else if(VIEW==='partitura'){ const w=Math.max(120,Math.min(W-2*G,(H-2*G)*16/9)), h=w*9/16; sc={x:(W-w)/2,y:(H-h)/2,w,h}; }
+        else if(W/H>=1.5){ const w=Math.max(120,Math.min(W*.54,(H-2*G)*16/9)), h=w*9/16; sc={x:G,y:(H-h)/2,w,h}; gt={x:w+2*G,y:0,w:Math.max(80,W-w-2*G),h:H}; }
+        else { const w=Math.max(120,Math.min(W-2*G,H*.6*16/9)), h=w*9/16; sc={x:(W-w)/2,y:G,w,h}; gt={x:0,y:h+2*G,w:W,h:Math.max(70,H-h-2*G)}; }
+    }
+    placeBox(canvasContainer,sc); placeBox(guitarPane,gt);
+}
+function resizeCanvases(){
+    layoutStage();
+    const dpr=window.devicePixelRatio||1;
+    const pr=guitarPane.getBoundingClientRect();
+    pianoCanvas.width=Math.max(1,Math.round(pr.width*dpr)); pianoCanvas.height=Math.max(1,Math.round(pr.height*dpr));
+    pianoCanvas.style.width=pr.width+'px'; pianoCanvas.style.height=pr.height+'px';
+    pianoCtx.setTransform(dpr,0,0,dpr,0,0);
+}
+window.addEventListener('resize',()=>{ resizeCanvases(); if(state.midiLoaded) drawScene(); });
+
+// ======================== MIDI LOADING ========================
+// ======================== VIOLÃO: tom ideal + acordes simples (hinos SATB) ========================
+function vgIsSatb(src){ return !!(src&&src.voiceNames&&src.voiceNames.length===4&&src.voiceNames[0]==='Soprano'&&src.voiceNames[3]==='Baixo'&&src.measures&&src.measures.length); }
+const VG_NOMES=['Soprano','Contralto','Tenor','Baixo'];
+function vgKeyName(pc,minor){ return CH_PT[((pc%12)+12)%12]+(minor?' menor':' maior'); }
+
+// uma "batida" por segmento; força: 0 = primeiro tempo, 1 = meio do compasso, 2 = tempo fraco
+function vgBeatSegs(src){
+    const segs=[];
+    src.measures.forEach(m=>{
+        const beats=m.beats||4, bt=m.bt||4, comp=(bt===8&&beats>=6&&beats%3===0), n=comp?beats/3:beats;
+        const nom=beats*4/bt, bq=nom/n, q=m.q||nom, cnt=Math.max(1,Math.round(q/bq)), off=Math.max(0,n-cnt), d=(m.e-m.s)/cnt;
+        for(let j=0;j<cnt;j++){ const k=j+off; segs.push({s:m.s+j*d,e:m.s+(j+1)*d,str:k===0?0:(n>=4&&n%2===0&&k===n/2?1:2),k,n,comp}); }
+    });
+    return segs;
+}
+const VG_MAJQ={0:'maj',2:'m',4:'m',5:'maj',7:'maj',9:'m'}, VG_MINQ={0:'m',3:'maj',5:'m',7:'maj',8:'maj',10:'maj'};
+const VG_CANDS=[]; for(let r=0;r<12;r++) [['maj',[0,4,7]],['m',[0,3,7]],['7',[0,4,7,10]]].forEach(([q,tn])=>VG_CANDS.push({r,q,tones:tn.map(x=>(r+x)%12)}));
+
+// Acordes básicos: um por batida, escolhidos pelas quatro vozes (notas curtas/de passagem pesam pouco), com troca só onde compensa
+// harm=true: "Harmonia" — o acorde é escolhido para combinar melhor com o soprano e o baixo (troca mais livre, aceita acordes de empréstimo)
+function vgAnalyze(src,harm){
+    const segs=vgBeatSegs(src); if(!segs.length) return null;
+    const VW=harm?[1.6,.5,.5,1.8]:[1,.7,.7,1.3], W=segs.map(()=>new Float64Array(12)), B=segs.map(()=>-1), Sp=segs.map(()=>-1), pcw=new Float64Array(12);
+    const notes=src.notes.filter(n=>!n.dup);
+    notes.forEach(n=>{ pcw[((n.midi%12)+12)%12]+=n.duration*[1,.7,.7,1.3][n.track|0]; });
+    segs.forEach((sg,i)=>{
+        const L=sg.e-sg.s;
+        notes.forEach(n=>{
+            if(n.startTime>=sg.e||n.endTime<=sg.s) return;
+            const ov=Math.min(sg.e,n.endTime)-Math.max(sg.s,n.startTime); if(ov<=0) return;
+            const tr=n.track|0, pc=((n.midi%12)+12)%12;
+            W[i][pc]+=VW[tr]*(ov/L)*(n.startTime>=sg.s-0.02?1.3:0.8);
+            if(tr===3&&(B[i]<0||n.startTime<=sg.s+0.02)) B[i]=pc;
+            if(tr===0&&(Sp[i]<0||n.startTime<=sg.s+0.02)) Sp[i]=pc;
+        });
+    });
+    // tom e modo: a última nota do baixo é a tônica
+    const bass=notes.filter(n=>n.track===3).sort((a,b)=>a.endTime-b.endTime), tonic=bass.length?((bass[bass.length-1].midi%12)+12)%12:0;
+    const minor=pcw[(tonic+3)%12]>pcw[(tonic+4)%12];
+    const dia=minor?VG_MINQ:VG_MAJQ, diaRoots=Object.keys(dia).map(Number);
+    const sc=segs.map((sg,i)=>{
+        const w=W[i], tot=w.reduce((a,b)=>a+b,0);
+        return VG_CANDS.map(c=>{
+            if(tot<1e-6) return 0;
+            if(c.q==='7'&&(w[(c.r+10)%12]<(harm?.10:.12)*tot||w[(c.r+4)%12]<.08*tot)) return -9;   // a sétima e a terça precisam estar presentes
+            let inn=0; c.tones.forEach(p=>inn+=w[p]);
+            let s=(inn-1.1*(tot-inn))/tot;
+            const rel=(c.r-tonic+12)%12, dq=dia[rel];
+            if(c.q===dq||(minor&&rel===7&&c.q==='m')) s+=(harm?.1:.25)+((rel===0||rel===5||rel===7)?(harm?.05:.1):0);
+            else if(c.q==='7') s+=diaRoots.includes(rel)?(rel===7?.12:-.12):(harm?-.3:-.6);
+            else s+=harm?-.05:-.45;
+            const b=B[i];
+            if(b>=0) s+=harm?((b===c.r)?.7:(c.tones.includes(b)?.1:-.5)):((b===c.r)?.35:(c.tones.includes(b)?.05:-.3));
+            if(harm&&Sp[i]>=0) s+=c.tones.includes(Sp[i])?.3:-.3;
+            return s;
+        });
+    });
+    const lam=harm?[.12,.3,.6]:[.45,1.0,2.2], N=VG_CANDS.length;
+    let prev=sc[0].slice(); const from=[new Int16Array(N)];
+    for(let i=1;i<segs.length;i++){
+        const cur=new Float64Array(N), fr=new Int16Array(N), L=lam[segs[i].str];
+        let bj=0; for(let j=1;j<N;j++) if(prev[j]>prev[bj]) bj=j;
+        for(let k=0;k<N;k++){ const stay=prev[k], sw=prev[bj]-L; if(stay>=sw){ cur[k]=stay+sc[i][k]; fr[k]=k; } else { cur[k]=sw+sc[i][k]; fr[k]=bj; } }
+        prev=cur; from.push(fr);
+    }
+    let k=0; for(let j=1;j<N;j++) if(prev[j]>prev[k]) k=j;
+    const path=new Array(segs.length); for(let i=segs.length-1;i>=0;i--){ path[i]=k; k=from[i][k]; }
+    const prog=[];
+    segs.forEach((sg,i)=>{ const c=VG_CANDS[path[i]], last=prog[prog.length-1]; if(last&&last.root===c.r&&last.q===c.q) last.e=sg.e; else prog.push({s:sg.s,e:sg.e,root:c.r,q:c.q}); });
+    return {tonic,minor,prog};
+}
+
+// ---- custo (facilidade) de cada tom ----
+const vgDiffCache={};
+function vgChordDiff(root,q){
+    const key=root+'|'+q; if(key in vgDiffCache) return vgDiffCache[key];
+    let d;
+    if(CH_OPEN_MAP[key]) d={maj:0,m:.3,'7':.6}[q]||1;
+    else { const v=chVoicing(root,q); d=4+.2*(v.base||0)+(q==='7'?.3:0); }
+    return vgDiffCache[key]=d;
+}
+function vgMelCost(p){            // nota da melodia (som real em MIDI)
+    if(p>83||p<40) return 30;
+    let f=99; for(let s=(p<50?0:2);s<6;s++){ const fr=p-GUITAR_OPEN[s]; if(fr>=0&&fr<=19&&fr<f) f=fr; }
+    return (f<=3?f*.25:.75+(f-3)*.9)+Math.max(0,(60-p)*.15);
+}
+function vgBassCost(p){
+    let pen=0; if(p<40){ p+=12; pen=1.5; } if(p>67) return 30;
+    let f=99; for(let s=0;s<4;s++){ const fr=p-GUITAR_OPEN[s]; if(fr>=0&&fr<=19&&fr<f) f=fr; }
+    return pen+(f<=3?f*.2:.6+(f-3)*.8);
+}
+function vgBassPitch(pc){ return 40+(((pc-4)%12)+12)%12; }   // fundamental do acorde na região grave (Mi2..Ré♯3)
+function vgCostT(src,t,mode){
+    const nt=src.notes.filter(n=>!n.dup);
+    if(mode==='violao'||mode==='all'){
+        const an=src.an, tot=an.prog.reduce((a,c)=>a+(c.e-c.s),0)||1;
+        let ch=0, bs=0; an.prog.forEach(c=>{ const r=((c.root+t)%12+12)%12; ch+=(c.e-c.s)*vgChordDiff(r,c.q); bs+=(c.e-c.s)*vgBassCost(vgBassPitch(r)); });
+        const so=nt.filter(n=>n.track===0); let mc=0; so.forEach(n=>mc+=vgMelCost(n.midi+t));
+        return 2.2*ch/tot+1.0*bs/tot+2.0*mc/Math.max(1,so.length);
+    }
+    const vs=nt.filter(n=>n.track===mode); if(!vs.length) return 0;
+    let c=0; vs.forEach(n=>c+=(mode===3?vgBassCost(n.midi+t):vgMelCost(n.midi+t))); return c/vs.length;
+}
+// melhor transposição (em semitons, de -12 a +7); pc = tom de chegada fixo (0..11) ou null
+function vgBestT(src,mode,pc){
+    if(!src.an) return 0;
+    let best=0,bc=1e9;
+    for(let t=-12;t<=7;t++){
+        if(pc!=null&&(((src.an.tonic+t)%12)+12)%12!==pc) continue;
+        const c=vgCostT(src,t,mode); if(c<bc-1e-9){ bc=c; best=t; }
+    }
+    return best;
+}
+
+// ======================== ALCANCE DA MÃO: corda/casa de cada nota + forma do acorde mais perto da melodia ========================
+// Cada acorde pode ser tocado em várias formas (aberta, pestana, ou "fechada" nas cordas agudas = inversões). O app escolhe,
+// para cada trecho, a forma que deixa soprano e baixo mais perto da mão, sem esticar o dedo nem desmanchar o acorde.
+function vgFingers(frets){
+    const fr=[]; frets.forEach((f,s)=>{ if(f>0) fr.push(f); });
+    const dist=[...new Set(fr)].sort((a,b)=>a-b); if(dist.length>4) return null;
+    for(const F of dist){                       // pestana: nenhuma corda sob ela pode estar solta ou mais baixa
+        const ss=[]; frets.forEach((f,s)=>{ if(f===F) ss.push(s); });
+        if(ss.length>1) for(let s=ss[0];s<=ss[ss.length-1];s++) if(frets[s]>=0&&frets[s]<F) return null;
+    }
+    return frets.map(f=>f>0?dist.indexOf(f)+1:0);
+}
+function vgVoicInfo(frets,fing,kind,diff){
+    const fr=frets.filter(f=>f>0), lo=fr.length?Math.min(...fr):1, hi=fr.length?Math.max(...fr):3, strs=[];
+    frets.forEach((f,s)=>{ if(f>=0) strs.push({s,fret:f,pitch:GUITAR_OPEN[s]+f}); });
+    return {frets,fing,base:fr.length?lo:0,lo,hi,strs,diff,kind,cen:fr.length?fr.reduce((a,b)=>a+b,0)/fr.length:1,key:frets.join(',')};
+}
+function vgClosed(root,q){
+    const pcs=(q==='m'?[0,3,7]:q==='7'?[0,4,7,10]:[0,4,7]).map(x=>(root+x)%12), req=q==='7'?[0,1,3]:[0,1,2], out=new Map();
+    [[1,2,3],[2,3,4],[3,4,5],[1,2,3,4],[2,3,4,5]].forEach(ss=>{
+        const opts=ss.map(s=>{ const o=[]; for(let f=0;f<=16;f++){ const ti=pcs.indexOf((GUITAR_OPEN[s]+f)%12); if(ti>=0) o.push({f,ti}); } return o; });
+        const cur=[];
+        (function go(i){
+            if(i===ss.length){
+                const got=new Set(cur.map(x=>x.ti)); if(!req.every(r=>got.has(r))) return;
+                const fr=cur.map(x=>x.f).filter(f=>f>0); if(fr.length&&Math.max(...fr)-Math.min(...fr)>3) return;
+                const frets=[-1,-1,-1,-1,-1,-1]; ss.forEach((s,k)=>frets[s]=cur[k].f);
+                const fing=vgFingers(frets); if(!fing) return;
+                const key=frets.join(','); if(!out.has(key)) out.set(key,vgVoicInfo(frets,fing,'closed',1.4+.25*new Set(fr).size));
+                return;
+            }
+            for(const o of opts[i]){ cur[i]=o; go(i+1); }
+        })(0);
+    });
+    return [...out.values()];
+}
+const vgCandCache={};
+function vgCands(root,q){
+    const key=root+'|'+q; if(vgCandCache[key]) return vgCandCache[key];
+    const std=chVoicing(root,q), list=[vgVoicInfo(std.frets.slice(),std.fing.slice(),'std',vgChordDiff(root,q))];
+    [['E',4],['A',9]].forEach(([fn,op])=>{
+        const f=CH_FORM[fn][q]; if(!f) return;
+        const b0=(root-op+12)%12, off=chParse(f[0]), fg=chParse(f[1]).map(x=>x<0?0:x);
+        (b0>0?[b0,b0+12]:[12]).forEach(b=>{
+            const frets=off.map(o=>o<0?-1:b+o); if(Math.max(...frets)>19) return;
+            list.push(vgVoicInfo(frets,fg.slice(),'barre',4+.2*b+(q==='7'?.3:0)));
+        });
+    });
+    vgClosed(root,q).forEach(v=>list.push(v));
+    return vgCandCache[key]=list;
+}
+const vgOptCache={};
+function vgOpts(p){ if(vgOptCache[p]) return vgOptCache[p]; const o=[]; for(let s=0;s<6;s++){ const f=p-GUITAR_OPEN[s]; if(f>=0&&f<=19) o.push({s,fret:f}); } if(!o.length) o.push({s:5,fret:19}); return vgOptCache[p]=o; }
+// custo de tocar uma casa com a mão segurando a forma V (0 = a nota já faz parte da forma)
+function vgNoteCost(o,V){
+    if(V.frets[o.s]===o.fret) return 0;
+    let c=.25+.01*o.fret;
+    if(o.fret===0) return c+(V.frets[o.s]>0?.8:0);
+    { const d=Math.max(0,o.fret-(V.hi+2),(V.lo-1)-o.fret); c+=.9*d+(d>=2?1.5:0); }
+    if(V.frets[o.s]>=0) c+=.3;
+    return c;
+}
+function vgBestOpt(p,V,ring){
+    let b=null,bc=1e9;
+    vgOpts(p).forEach(o=>{ const c=vgNoteCost(o,V)+(ring&&ring.has(o.s)?2.5:0)+.003*(5-o.s); if(c<bc){ bc=c; b=o; } });
+    return {c:bc,o:b};
+}
+// baixo: fundamental (ou quinta) do acorde na região grave, na oitava mais perto da mão
+function vgBassBest(pc,V,ring,near){
+    let b=null,bc=1e9;
+    for(let p=40;p<=64;p++){ if(p%12!==pc) continue;
+        vgOpts(p).forEach(o=>{ if(o.s>4) return; let c=vgNoteCost(o,V)+.1*Math.max(0,p-52)+(ring&&ring.has(o.s)?2.5:0); if(near>0&&o.fret>0&&Math.abs(o.fret-near)>4) c+=3; if(c<bc){ bc=c; b={midi:p,s:o.s,fret:o.fret}; } });
+    }
+    return {c:bc,b};
+}
+function vgPlan(src,t){
+    const pro=state.style==='pro', ms=src.measures.map(m=>m.s);
+    const mel=src.notes.filter(n=>(n.track|0)===0&&!n.dup).sort((a,b)=>a.startTime-b.startTime)
+        .map(n=>({midi:Math.max(0,Math.min(127,n.midi+t)),startTime:n.startTime,endTime:n.endTime,duration:n.duration,velocity:n.velocity,track:0}));
+    const pieces=[];
+    src.an.prog.forEach(c=>{
+        const cuts=[c.s]; ms.forEach(s=>{ if(s>c.s+0.05&&s<c.e-0.05) cuts.push(s); }); cuts.push(c.e);
+        for(let i=0;i<cuts.length-1;i++) pieces.push({s:cuts[i],e:cuts[i+1],root:((c.root+t)%12+12)%12,q:c.q,mel:[]});
+    });
+    const pieceIdx=tm=>{ let k=0; for(let i=0;i<pieces.length;i++){ if(pieces[i].s<=tm+0.001) k=i; else break; } return k; };
+    mel.forEach(n=>pieces[pieceIdx(n.startTime)].mel.push(n));
+    // 1) forma do acorde de cada trecho (programação dinâmica: perto das notas e sem saltos grandes da mão)
+    const C=pieces.map(p=>vgCands(p.root,p.q));
+    const cost=pieces.map((p,i)=>C[i].map(V=>{
+        let c=V.diff; p.mel.forEach(n=>{ c+=(n.duration<.25?.5:1)*vgBestOpt(n.midi,V).c; });
+        return c+.9*vgBassBest(p.root,V).c;
+    }));
+    const tc=(a,b)=>a.key===b.key?0:.2+.2*Math.abs(a.cen-b.cen);
+    let prev=cost[0].slice(); const from=[null];
+    for(let i=1;i<pieces.length;i++){
+        const cur=new Array(C[i].length), fr=new Int32Array(C[i].length);
+        for(let k=0;k<C[i].length;k++){
+            let bj=0,bv=1e9; for(let j=0;j<C[i-1].length;j++){ const v=prev[j]+tc(C[i-1][j],C[i][k]); if(v<bv){ bv=v; bj=j; } }
+            cur[k]=bv+cost[i][k]; fr[k]=bj;
+        }
+        prev=cur; from.push(fr);
+    }
+    let k=0; for(let j=1;j<prev.length;j++) if(prev[j]<prev[k]) k=j;
+    const Vs=new Array(pieces.length); for(let i=pieces.length-1;i>=0;i--){ Vs[i]=C[i][k]; if(i>0) k=from[i][k]; }
+    const tl=[]; pieces.forEach((p,i)=>{ const l=tl[tl.length-1]; if(!(l&&l.root===p.root&&l.q===p.q&&l.v.key===Vs[i].key)) tl.push({t:p.s,root:p.root,q:p.q,v:Vs[i]}); });
+    // 2) corda e casa de cada nota (sem repetir corda que ainda está soando)
+    const ring=[]; const ringAt=(tm,ex)=>{ const st=new Set(); ring.forEach(r=>{ if(r.s0<=tm+0.02&&r.e>tm+0.02&&r!==ex) st.add(r.s); }); return st; };
+    mel.forEach(n=>{ const V=Vs[pieceIdx(n.startTime)], b=vgBestOpt(n.midi,V,ringAt(n.startTime)).o; n.fix={s:b.s,fret:b.fret}; ring.push({s:b.s,s0:n.startTime,e:n.endTime}); });
+    const melFret=tm=>{ const m=mel.find(n=>n.startTime<=tm+0.02&&n.endTime>tm+0.02); return m?m.fix.fret:0; };
+    const out=mel.slice(), nextMelOn=(s,tm)=>{ let m=1e9; mel.forEach(n=>{ if(n.fix.s===s&&n.startTime>tm+0.03&&n.startTime<m) m=n.startTime; }); return m; };
+    const addNote=(midi,s0,e0,vel,track,fix)=>{
+        const e=Math.min(e0,nextMelOn(fix.s,s0)); if(e-s0<0.06) return null;
+        ring.forEach(r=>{ if(r.note&&r.s===fix.s&&r.e>s0+0.03&&r.s0<s0-0.05){ r.e=s0; r.note.endTime=s0; r.note.duration=s0-r.note.startTime; } });   // a corda é reaproveitada: a nota anterior para de soar
+        const n={midi,startTime:s0,endTime:e,duration:e-s0,velocity:vel,track,fix}; out.push(n); ring.push({s:fix.s,s0,e,note:n}); return n; };
+    if(!pro){
+        pieces.forEach((p,i)=>{ const bb=vgBassBest(p.root,Vs[i],ringAt(p.s),melFret(p.s)).b; if(bb) addNote(bb.midi,p.s,p.e,.6,3,{s:bb.s,fret:bb.fret}); });
+    } else {
+        const segs=src.segs||(src.segs=vgBeatSegs(src)); let cnt=0, curBass=null;
+        segs.forEach(sg=>{
+            if(sg.k===0) cnt=0;
+            const beat=sg.e-sg.s, d=sg.comp?3:2, sl=beat/d;
+            const bassBeat=sg.k===0||(sg.n%2===0&&sg.n>=4&&sg.k===sg.n/2)||(sg.n===2&&sg.k===1);
+            const span=(sg.n>=4&&sg.n%2===0)?sg.n/2:(sg.n===3?3:1);
+            for(let j=0;j<d;j++){
+                const tm=sg.s+j*sl, pi=pieceIdx(tm+0.001), p=pieces[pi], V=Vs[pi];
+                const isChordStart=tl.some(x=>Math.abs(x.t-tm)<0.04&&x.root===p.root&&x.q===p.q);
+                if(j===0&&(bassBeat||isChordStart)){
+                    const useAlt=sg.k>0&&!isChordStart;
+                    let bb=useAlt?vgBassBest((p.root+7)%12,V,ringAt(tm),melFret(tm)).b:null; if(!bb||(bb.fret>V.hi+2&&!useAlt)) bb=vgBassBest(p.root,V,ringAt(tm),melFret(tm)).b; if(!bb) continue;
+                    const nn=addNote(bb.midi,tm,Math.min(p.e,tm+span*beat),.62,3,{s:bb.s,fret:bb.fret}); if(nn) curBass=nn.midi;
+                    continue;
+                }
+                const onset=mel.some(n=>Math.abs(n.startTime-tm)<0.04);
+                if(j===0&&onset) continue;
+                if(j>0&&(onset||sl<0.2)) continue;
+                const m=mel.find(n=>n.startTime<=tm+0.02&&n.endTime>tm+0.02), mp=m?m.midi:999, bp=curBass==null?V.strs[0].pitch:curBass, rg=ringAt(tm);
+                let cand=V.strs.filter(x=>x.s>=2&&x.s<=4&&!rg.has(x.s)&&x.pitch>=bp+3&&x.pitch<=mp-3);
+                if(!cand.length) cand=V.strs.filter(x=>x.s>=1&&x.s<=4&&!rg.has(x.s)&&x.pitch>=bp+3&&x.pitch<=mp-3);
+                if(!cand.length) continue;
+                const L=cand.length, order=[0,L-1,Math.min(1,L-1),L-1], c=cand[order[cnt%4]]; cnt++;
+                addNote(c.pitch,tm,Math.min(p.e,tm+sl*1.9),.45,2,{s:c.s,fret:c.fret});
+            }
+        });
+    }
+    vgOpenStrings(out);
+    out.sort((a,b)=>a.startTime-b.startTime);
+    return {notes:out,tl,pieces,Vs};
+}
+// Usa a corda solta sempre que ela dá exatamente a mesma nota e nenhuma outra nota está soando nessa corda ao mesmo tempo
+// (ex.: Mi agudo na corda Si, casa 5 -> Mi solta; Si na corda Sol, casa 4 -> Si solta).
+function vgOpenStrings(notes){
+    const ns=notes.filter(n=>n.fix&&n.fix.fret>0).sort((a,b)=>a.startTime-b.startTime);
+    const busy=(s,n)=>notes.some(m=>m!==n&&m.fix&&m.fix.s===s&&m.startTime<n.endTime-0.01&&m.endTime>n.startTime+0.01);
+    ns.forEach(n=>{
+        const c=[]; for(let s=0;s<6;s++) if(GUITAR_OPEN[s]===n.midi&&!busy(s,n)) c.push(s);
+        if(c.length) n.fix={s:c[0],fret:0};
+    });
+}
+
+function vgMakeSrc(parsed){
+    const src={notes:parsed.notes,duration:parsed.duration,measures:parsed.measures||null,voiceNames:parsed.voiceNames||null};
+    if(vgIsSatb(src)){ const an=vgAnalyze(src); if(an){ src.an=an; src.anB=an; src.tonic=an.tonic; src.minor=an.minor; } }
+    return src;
+}
+// ---- Cantoral: acordes do livro (hinos/cifras.json). Cada acorde = [compasso, tempo(semínimas), raiz(0=Dó, som real), tipo] ----
+let CIFRAS=null;
+async function vgLoadCifras(){ if(CIFRAS) return CIFRAS; try{ const r=await fetch('hinos/cifras.json'); if(r.ok) CIFRAS=await r.json(); }catch(e){} return CIFRAS; }
+function vgAttachCifra(src,n){
+    src.anC=null;
+    if(!CIFRAS||!n||!src.measures||!src.anB) return;
+    const d=CIFRAS[String(n)]; if(!d||!d.k||!d.k.length) return;
+    const byMi=new Map(); d.k.forEach(c=>{ if(!byMi.has(c[0])) byMi.set(c[0],[]); byMi.get(c[0]).push(c); });
+    const ev=[];
+    src.measures.forEach(m=>{ const a=byMi.get(m.mi); if(!a) return; a.forEach(c=>ev.push({s:m.s+(c[1]/(m.q||1))*(m.e-m.s),root:c[2],q:c[3]})); });
+    if(!ev.length) return;
+    ev.sort((a,b)=>a.s-b.s); ev[0].s=0;
+    const end=src.measures[src.measures.length-1].e, prog=[];
+    ev.forEach((c,i)=>{ const e=i+1<ev.length?ev[i+1].s:end, last=prog[prog.length-1]; if(last&&last.root===c.root&&last.q===c.q) last.e=e; else prog.push({s:c.s,e,root:c.root,q:c.q}); });
+    src.anC={tonic:src.anB.tonic,minor:src.anB.minor,prog};
+}
+// ======================== ACOMPANHAMENTO: batida / dedilhado ========================
+// Os movimentos seguem a contagem do compasso: U = nº de movimentos por compasso (6/8 = 6 colcheias, 4/4 = 4 tempos, 3/4 = 3...).
+//  · Simples: 1 movimento por tempo · Subdividida: "1 e 2 e 3 e..." (o dobro) · Mista: 1ª metade simples + 2ª metade subdividida.
+// Dedilhado: P = polegar (sempre o baixo do acorde) · I = indicador (3ª corda, sol) · M = médio (2ª, si) · A = anelar (1ª, mi agudo)
+// Batida: d = para baixo · u = para cima
+function vgMeter(src){
+    const c={}; src.measures.forEach(m=>{ const k=(m.beats||4)+'|'+(m.bt||4); c[k]=(c[k]||0)+1; });
+    const k=Object.keys(c).sort((a,b)=>c[b]-c[a])[0]||'4|4', [b,t]=k.split('|').map(Number);
+    const U=t===2?b*2:b, uq=t===2?1:4/t;        // 2/2 e 3/2 contam em semínimas
+    return {U,uq,barQ:U*uq,beats:b,bt:t};
+}
+const ACC_PIMAMI=[[0],[1],[2],[3],[2],[1]];
+const accRep=(a,n)=>{ let r=[]; for(let i=0;i<n;i++) r=r.concat(a); return r; };
+function accHalf(U){ return U%6===0?U/2:(U===9?6:Math.ceil(U/2)); }
+function accDedSimple(U){
+    if(U===2) return [[0],[1,2,3]];
+    if(U===3) return [[0],[1,2,3],[1,2,3]];
+    if(U===4) return [[0],[1],[2],[3]];
+    if(U%6===0) return accRep(ACC_PIMAMI,U/6);
+    if(U===9) return accRep([[0],[1],[2]],3);
+    return Array.from({length:U},(_,i)=>[i%4]);
+}
+function accDedSub(U){
+    const N=U*2;
+    if(U===2) return [[0],[1],[2],[3]];
+    if(U===4) return accRep([[0],[1],[2],[3]],2);
+    if(N%6===0) return accRep(ACC_PIMAMI,N/6);
+    return Array.from({length:N},(_,i)=>[i%4]);
+}
+// retorna [{pos (em unidades do compasso), d:[alvos]}]
+function accDed(U,cont){
+    const si=accDedSimple(U), sb=accDedSub(U), out=[];
+    if(cont==='simple') si.forEach((d,i)=>out.push({pos:i,d}));
+    else if(cont==='sub') sb.forEach((d,i)=>out.push({pos:i/2,d}));
+    else { const H=accHalf(U); si.forEach((d,i)=>{ if(i<H) out.push({pos:i,d}); }); sb.forEach((d,j)=>{ if(j>=2*H) out.push({pos:j/2,d}); }); }
+    return out;
+}
+function accBatSimple(U){
+    if(U===2) return ['d','d'];
+    if(U===3) return ['d','d','u'];
+    if(U===4) return ['d','d','u','d'];
+    return Array.from({length:U},(_,i)=>i%3===2?'u':'d');       // 6/8: ↓ ↓ ↑ ↓ ↓ ↑
+}
+// retorna [{pos, k:'d'|'u'}]
+function accBat(U,cont){
+    const si=accBatSimple(U), out=[];
+    if(cont==='simple') si.forEach((k,i)=>out.push({pos:i,k}));
+    else if(cont==='sub') for(let i=0;i<U;i++){ out.push({pos:i,k:'d'},{pos:i+.5,k:'u'}); }
+    else {
+        const H=accHalf(U); si.forEach((k,i)=>{ if(i<H) out.push({pos:i,k}); });
+        for(let u=H;u<U;u++){
+            if(U<=4){ const st=((u-H)%2===0)?'u':'d', op=st==='u'?'d':'u'; [st,op,st,op].forEach((k,j)=>out.push({pos:u+j*.25,k})); }   // 1 tempo vira 4 semicolcheias
+            else { out.push({pos:u,k:'d'},{pos:u+.5,k:'u'}); }                                                                         // 1 colcheia vira 2 semicolcheias
+        }
+    }
+    return out;
+}
+const ACC_CONT={simple:'simples',sub:'subdividida',mix:'mista'};
+function vgAccToast(){ const a=state.src&&state.src.accInfo; return a?('Acompanhamento: '+(a.kind?'dedilhado':'batida')+' · '+ACC_CONT[a.cont]+' ('+a.beats+'/'+a.bt+')'):'Acompanhamento'; }
+async function vgLoadBg(name){
+    if(!name||name==='off'||name==='violao'){ return; }
+    if(BG.name===name&&BG.smp) return;
+    BG.name=name; BG.smp=null;
+    let out; try{ out=await getOutChain(); }catch(e){ out=Tone.getDestination(); }
+    for(const root of ['https://nbrosowsky.github.io/tonejs-instruments/samples/','https://cdn.jsdelivr.net/gh/nbrosowsky/tonejs-instruments@master/samples/']){
+        try{ const smp=await loadPianoFrom(root+name+'/',out); if(BG.name===name){ BG.smp=smp; applyVolume(); } else { try{smp.dispose();}catch(e){} } return; }catch(e){}
+    }
+}
+function vgPlanAcomp(src,t){
+    const kind=state.acc==='ded'?1:0, cont=state.cont, M=vgMeter(src), pat=kind?accDed(M.U,cont):accBat(M.U,cont);
+    src.accInfo={kind,cont,beats:M.beats,bt:M.bt};
+    const prog=src.an.prog, ms=src.measures, rootOf=c=>((c.root+t)%12+12)%12;
+    // 1) forma de cada acorde: com baixo (e, no dedilhado, com as 3 cordas agudas), perto da forma anterior
+    const C=prog.map(c=>{
+        let l=vgCands(rootOf(c),c.q).filter(V=>V.strs.length>=4&&V.strs[0].s<=2&&(!kind||V.strs.filter(x=>x.s>=3).length===3));
+        if(!l.length) l=vgCands(rootOf(c),c.q).filter(V=>V.strs.length>=4&&V.strs[0].s<=2);
+        if(!l.length) l=vgCands(rootOf(c),c.q); return l; });
+    const tc=(a,b)=>a.key===b.key?0:.2+.2*Math.abs(a.cen-b.cen);
+    let prev=C[0].map(V=>V.diff); const from=[null];
+    for(let i=1;i<C.length;i++){
+        const cur=[], fr=[];
+        C[i].forEach((V,k)=>{ let bv=1e9,bj=0; C[i-1].forEach((U,j)=>{ const v=prev[j]+tc(U,V); if(v<bv){ bv=v; bj=j; } }); cur[k]=bv+V.diff; fr[k]=bj; });
+        prev=cur; from.push(fr);
+    }
+    let kk=0; for(let j=1;j<prev.length;j++) if(prev[j]<prev[kk]) kk=j;
+    const Vs=new Array(prog.length); for(let i=prog.length-1;i>=0;i--){ Vs[i]=C[i][kk]; if(i>0) kk=from[i][kk]; }
+    const chordAt=tm=>{ let k=0; for(let i=0;i<prog.length;i++){ if(prog[i].s<=tm+0.001) k=i; else break; } return k; };
+    // 2) movimentos do padrão, compasso a compasso (a anacruse cai no fim do padrão)
+    const evs=[]; let ph=0;
+    ms.forEach((m,i)=>{
+        const Lu=(m.q||M.barQ)/M.uq, d=m.e-m.s; if(d<=0) return;
+        ph=(i===0&&Lu<M.U-1e-6)?M.U-Lu:0;
+        pat.forEach(p=>{ const u=p.pos-ph; if(u<-1e-6||u>=Lu-1e-6) return; evs.push(Object.assign({t:m.s+u/Lu*d,pos:p.pos},p.d?{d:p.d}:{k:p.k})); });
+    });
+    // troca de acorde fora dos movimentos do padrão: entra o baixo (dedilhado) ou um golpe para baixo (batida)
+    prog.forEach(c=>{ if(!evs.some(e=>Math.abs(e.t-c.s)<0.08)) evs.push(kind?{t:c.s,pos:0,d:[0]}:{t:c.s,pos:0,k:'d'}); });
+    evs.sort((a,b)=>a.t-b.t);
+    const out=[];
+    const add=(V,s,tm,vel,sus)=>{ const st=V.strs.find(x=>x.s===s); if(!st) return; out.push({midi:st.pitch,startTime:tm,endTime:tm+sus,duration:sus,velocity:Math.min(.95,vel),track:s<=2?3:2,acc:true,fix:{s:st.s,fret:st.fret}}); };
+    const nearStr=(V,target)=>{ if(target===0) return V.strs[0].s; const want=target+2, ok=V.strs.filter(x=>x.s>=3); if(!ok.length) return V.strs[V.strs.length-1].s; return ok.slice().sort((a,b)=>Math.abs(a.s-want)-Math.abs(b.s-want)||b.s-a.s)[0].s; };
+    evs.forEach((e,i)=>{
+        const ci=chordAt(e.t), c=prog[ci], V=Vs[ci], nextT=i+1<evs.length?evs[i+1].t:c.e;
+        const gap=Math.max(0.1,Math.min(nextT,c.e)-e.t), sus=Math.max(0.12,Math.min(gap*1.6,c.e-e.t+0.05));
+        if(e.d){                                           // dedilhado: P = baixo · I, M, A = cada dedo na sua corda
+            const ss=[...new Set(e.d.map(g=>nearStr(V,g)))].sort((a,b)=>a-b);
+            ss.forEach((s,j)=>add(V,s,e.t+j*0.014,s<=2?.74:.58,sus));
+        } else if(e.k==='d'){                              // para baixo: todas as cordas do acorde, do grave ao agudo
+            const base=e.pos===0?.78:(Number.isInteger(e.pos)?.66:.56);
+            V.strs.forEach((x,j)=>add(V,x.s,e.t+j*0.009,base*(j===0?1.1:1),sus));
+        } else {                                           // para cima: só as cordas mais agudas, do agudo ao grave
+            V.strs.filter(x=>x.s>=2).reverse().forEach((x,j)=>add(V,x.s,e.t+j*0.008,.44,sus));
+        }
+    });
+    // a mesma corda não soa duas notas ao mesmo tempo
+    const byS={}; out.forEach(n=>{ (byS[n.fix.s]=byS[n.fix.s]||[]).push(n); });
+    Object.values(byS).forEach(a=>{ a.sort((x,y)=>x.startTime-y.startTime); a.forEach((n,i)=>{ const nx=a[i+1]; if(nx&&nx.startTime<n.endTime-0.005){ n.endTime=Math.max(n.startTime+0.05,nx.startTime-0.01); n.duration=n.endTime-n.startTime; } }); });
+    vgOpenStrings(out);
+    // soprano ao fundo (só para ouvir o acompanhamento junto com o canto)
+    if(state.bg!=='off') src.notes.filter(n=>(n.track|0)===0&&!n.dup).forEach(n=>out.push({midi:Math.max(0,Math.min(127,n.midi+t)),startTime:n.startTime,endTime:n.endTime,duration:n.duration,velocity:Math.min(.85,(n.velocity||.7)*.9),track:0,bg:true}));
+    out.sort((a,b)=>a.startTime-b.startTime);
+    const tl=[]; prog.forEach((c,i)=>{ const l=tl[tl.length-1], r=rootOf(c); if(!(l&&l.root===r&&l.q===c.q&&l.v.key===Vs[i].key)) tl.push({t:c.s,root:r,q:c.q,v:Vs[i]}); });
+    return {notes:out,tl};
+}
+function vgNotesFor(src,mode,t){
+    const mk=(n,dm)=>({midi:Math.max(0,Math.min(127,n.midi+dm)),startTime:n.startTime,endTime:n.endTime,duration:n.duration,velocity:n.velocity,track:n.track|0});
+    const out=[];
+    if(mode==='violao'&&src.an) return vgPlan(src,t).notes;
+    if(mode==='violao'&&src.an){
+        src.notes.filter(n=>(n.track|0)===0&&!n.dup).forEach(n=>out.push(mk(n,t)));
+        const ms=src.measures.map(m=>m.s);
+        src.an.prog.forEach(c=>{
+            const p=vgBassPitch(((c.root+t)%12+12)%12), on=[c.s];
+            ms.forEach(s=>{ if(s>c.s+0.05&&s<c.e-0.05) on.push(s); });
+            on.forEach((s,i)=>{ const e=i+1<on.length?on[i+1]:c.e; out.push({midi:p,startTime:s,endTime:e,duration:e-s,velocity:.6,track:3}); });
+        });
+    } else if(mode==='all'){
+        src.notes.filter(n=>!n.dup).forEach(n=>out.push(mk(n,t)));
+    } else {
+        src.notes.filter(n=>(n.track|0)===mode).forEach(n=>out.push(mk(n,t)));
+    }
+    return out.sort((a,b)=>a.startTime-b.startTime);
+}
+async function vgRebuild(keep){
+    const src=state.src; if(!src) return;
+    if(src.anB) src.an=(state.cant&&src.anC)?src.anC:state.harm?(src.anH||(src.anH=vgAnalyze(src,true))):src.anB;
+    const mode=state.mode, kp=state.keyPc, satb=!!src.an;
+    const auto=satb?vgBestT(src,mode,null):0;
+    const t=!satb?0:(kp==='auto'?auto:kp==='orig'?0:vgBestT(src,mode,kp));
+    state.t=t;
+    let notes, tl=[];
+    if(satb&&mode==='violao'){ const pl=(state.style==='acomp')?vgPlanAcomp(src,t):vgPlan(src,t); notes=pl.notes; tl=pl.tl; if(state.style==='acomp'&&state.bg!=='off'&&state.bg!=='violao') vgLoadBg(state.bg); }
+    else { notes=vgNotesFor(src,mode,t); if(satb&&mode==='all') tl=src.an.prog.map(c=>({t:c.s,root:((c.root+t)%12+12)%12,q:c.q})); }
+    window.vgChordTL=tl;
+    if(satb){
+        const ks=document.getElementById('keySel');
+        ks.options[0].textContent='Automático ('+vgKeyName(src.tonic+auto,src.minor)+')';
+        ks.options[1].textContent='Original ('+vgKeyName(src.tonic,src.minor)+')';
+        ks.value=String(kp);
+    }
+    const fl=(satb&&mode==='violao');
+    document.getElementById('styleCtl').style.display=fl?'flex':'none';
+    ['accCtl','contCtl','bgCtl'].forEach(id=>{ document.getElementById(id).style.display=(fl&&state.style==='acomp')?'flex':'none'; });
+    const was=state.isPlaying, tm=state.currentTime;
+    if(was) pausePlayback();
+    await applyNotes(notes,src.duration,{fromSrc:true,keepTime:keep?tm:null});
+    if(was) startPlayback();
+}
+function vgModeUI(show){ document.getElementById('modeCtl').style.display=show?'flex':'none'; const sa=show&&state.src&&state.src.an?'flex':'none'; document.getElementById('keyCtl').style.display=sa; document.getElementById('harmCtl').style.display=sa; if(!sa){ ['styleCtl','accCtl','contCtl','bgCtl'].forEach(id=>{ document.getElementById(id).style.display='none'; }); } }
+function vgBuildMode(){
+    const src=state.src, ids=[...new Set(src.notes.map(n=>n.track|0))].sort((a,b)=>a-b), satb=!!src.an;
+    let h=satb?'<option value="violao">🎸 Violão: melodia + baixo + acordes</option>':'';
+    h+='<option value="all">Todas as vozes</option>';
+    ids.forEach((id,i)=>{ const nm=satb?VG_NOMES[id]:((src.voiceNames&&src.voiceNames[id])||('Voz '+(i+1))); h+=`<option value="${id}">${nm}</option>`; });
+    const ms=document.getElementById('modeSel'); ms.innerHTML=h; ms.value=String(state.mode);
+    if(satb){
+        let k='<option value="auto">Automático</option><option value="orig">Original</option>';
+        for(let pc=0;pc<12;pc++) k+=`<option value="${pc}">${vgKeyName(pc,src.minor)}</option>`;
+        document.getElementById('keySel').innerHTML=k;
+    }
+    document.getElementById('harmSel').value=state.cant?'2':state.harm?'1':'0'; document.getElementById('styleSel').value=state.style;
+    document.getElementById('accSel').value=state.acc; document.getElementById('contSel').value=state.cont; document.getElementById('bgSel').value=state.bg;
+    vgModeUI(satb||ids.length>1);
+}
+document.getElementById('modeSel').addEventListener('change',e=>{ const v=e.target.value; state.mode=(v==='violao'||v==='all')?v:parseInt(v); vgRebuild(true); });
+try{ const hv=localStorage.getItem('vgHarm'); state.harm=hv==='1'; state.cant=hv==='2'; const sv=localStorage.getItem('vgStyle'); state.style=(sv==='pro'||sv==='acomp')?sv:'basic'; const a=localStorage.getItem('vgAcc'); state.acc=a==='ded'?'ded':'bat'; const p=localStorage.getItem('vgCont'); state.cont=(p==='sub'||p==='mix')?p:'simple'; const b=localStorage.getItem('vgBg'); state.bg=['off','flute','violin','harmonium','violao'].includes(b)?b:'flute'; }catch(e){}
+document.getElementById('styleSel').addEventListener('change',async e=>{
+    const v=e.target.value; state.style=v==='pro'?'pro':v==='acomp'?'acomp':'basic'; try{ localStorage.setItem('vgStyle',state.style); }catch(x){}
+    await vgRebuild(true);
+    toast(state.style==='acomp'?vgAccToast():state.style==='pro'?'Fingerstyle profissional: dedilhado com notas internas do acorde':'Fingerstyle básico: melodia + baixo','success');
+});
+document.getElementById('accSel').addEventListener('change',async e=>{ state.acc=e.target.value==='ded'?'ded':'bat'; try{ localStorage.setItem('vgAcc',state.acc); }catch(x){} await vgRebuild(true); toast(vgAccToast(),'success'); });
+document.getElementById('contSel').addEventListener('change',async e=>{ const p=e.target.value; state.cont=(p==='sub'||p==='mix')?p:'simple'; try{ localStorage.setItem('vgCont',state.cont); }catch(x){} await vgRebuild(true); toast(vgAccToast(),'success'); });
+document.getElementById('bgSel').addEventListener('change',async e=>{ const b=e.target.value; state.bg=['off','flute','violin','harmonium','violao'].includes(b)?b:'flute'; try{ localStorage.setItem('vgBg',state.bg); }catch(x){} await vgRebuild(true); toast(state.bg==='off'?'Soprano ao fundo desligado':'Soprano ao fundo: '+e.target.options[e.target.selectedIndex].text,'success'); });
+document.getElementById('harmSel').addEventListener('change',async e=>{
+    const hv=e.target.value; state.harm=hv==='1'; state.cant=hv==='2'; try{ localStorage.setItem('vgHarm',hv); }catch(x){}
+    await vgRebuild(true);
+    if(state.cant&&state.src&&!state.src.anC){ document.getElementById('harmSel').value='0'; toast('Este hino não tem cifra do cantoral — usando a harmonia Simples'); return; }
+    if(state.src&&state.src.an) toast((state.cant?'Harmonia: cantoral (livro)':state.harm?'Harmonia: melhor encaixe':'Harmonia: simples')+' · '+state.src.an.prog.length+' acordes','success');
+});
+document.getElementById('keySel').addEventListener('change',e=>{ const v=e.target.value; state.keyPc=(v==='auto'||v==='orig')?v:parseInt(v); vgRebuild(true); });
+
+async function loadBuffer(buf,name,hn){
+    state.hinoN=null;                       // só vale para hino da biblioteca (openHino marca depois)
+    loadingOverlay.classList.add('active');
+    fileNameEl.textContent=name;
+    try {
+        const parsed=await parseAnyScore(buf);
+        if(!parsed.notes.length) throw new Error('Nenhuma nota encontrada');
+        const src=vgMakeSrc(parsed); src.hymnN=hn||null; if(hn) vgAttachCifra(src,hn); state.src=src;
+        state.srcBpm=parsed.bpm; state.srcTs=parsed.timeSig; state.srcTm=parsed.tm; state.srcPickup=parsed.pickup||0; state.srcKey=parsed.key;
+        state.mode=src.an?'violao':'all'; state.keyPc='auto';
+        vgBuildMode(); await vgRebuild(false);
+        if(src.an) toast('Tom '+vgKeyName(src.tonic+state.t,src.minor)+(state.t?' (original '+vgKeyName(src.tonic,src.minor)+')':'')+' · '+src.an.prog.length+' acordes','success');
+        else toast(`Carregado! ${state.totalNotes} notas`, 'success');
+    } catch(err){ toast('Erro: '+err.message); state.midiLoaded=false; }
+    loadingOverlay.classList.remove('active');
+}
+function loadMidiFile(file){
+    if(!file) return;
+    const reader=new FileReader();
+    reader.onload=e=>loadBuffer(e.target.result,file.name);
+    reader.onerror=()=>toast('Erro ao ler arquivo');
+    reader.readAsArrayBuffer(file);
+}
+
+// ======================== SEM MODO PRO: todos os hinos completos ========================
+const PRO={ok:true};
+function proLimit(){ return Infinity; }
+function proPaywall(){}
+
+// ---- biblioteca de hinos (pasta hinos/ com index.json) ----
+let HINOS=null;
+const normTxt=t=>String(t).toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'');
+function renderHinos(){
+    const q=normTxt(document.getElementById('hinoQ').value).trim(), box=document.getElementById('hinoList');
+    box.innerHTML='';
+    if(!HINOS){ box.textContent=location.protocol==='file:'?'A biblioteca precisa de um endereço http. Abra o app pelo GitHub Pages ou rode um servidor local (python3 -m http.server) na pasta do projeto e acesse http://localhost:8000.':'Não foi possível carregar a lista de hinos.'; return; }
+    const list=HINOS.filter(h=>!q||String(h.n).padStart(3,'0').includes(q.replace(/^0+(?=\d)/,''))||String(h.n)===q||normTxt(h.t).includes(q));
+    if(!list.length){ box.textContent='Nenhum hino encontrado.'; return; }
+    const fr=document.createDocumentFragment();
+    list.forEach(h=>{ const b=document.createElement('button'); b.className='hino-item'; const lock=false; b.innerHTML='<b>'+String(h.n).padStart(3,'0')+'</b><span style="flex:1"></span>'+(lock?'<small style="opacity:.65;white-space:nowrap">🔒 '+PRO_CFG.previewSec+'s</small>':''); b.children[1].textContent=h.t; b.onclick=()=>openHino(h); fr.appendChild(b); });
+    box.appendChild(fr);
+}
+async function openHinos(){
+    const m=document.getElementById('mHinos'); m.hidden=false; document.body.style.overflow='hidden';
+    if(!HINOS){ try{ HINOS=await (await fetch('hinos/index.json')).json(); }catch(e){ HINOS=null; } }
+    renderHinos();
+}
+async function openHino(h){
+    closeModals();
+    loadingOverlay.classList.add('active');
+    try{
+        const r=await fetch('hinos/'+h.f); if(!r.ok) throw new Error('arquivo não encontrado');
+        await vgLoadCifras();
+        await loadBuffer(await r.arrayBuffer(),String(h.n).padStart(3,'0')+' – '+h.t,h.n);
+        state.hinoN=h.n; updateUI();
+    }catch(e){ loadingOverlay.classList.remove('active'); toast('Erro: '+e.message); }
+}
+
+async function applyNotes(notes, duration, opts){
+    opts=opts||{};
+    if(!opts.fromSrc){ state.src=null; state.hinoN=null; vgModeUI(false); }
+    notes.forEach(n=>{ n.color=gc(n.track||0); });
+    state.notes=notes; state.duration=duration; state.midiLoaded=true;
+    let mn=127,mx=0; notes.forEach(n=>{if(n.midi<mn)mn=n.midi;if(n.midi>mx)mx=n.midi;});
+    state.lowestNote=Math.max(21,mn-2); state.highestNote=Math.min(108,mx+2);
+    while(state.highestNote-state.lowestNote<23){ if(state.lowestNote>21) state.lowestNote--; if(state.highestNote<108) state.highestNote++; }
+    state.totalNotes=notes.length;
+    noteCountBadge.textContent=state.totalNotes+' notas'; noteCountBadge.style.display='inline';
+    buildPianoKeys();
+    await initSampler();
+    welcomeScreen.classList.add('hidden'); resizeCanvases();
+    if(opts.keepTime!=null){ state.pausedAt=state.currentTime=Math.max(0,Math.min(duration,opts.keepTime)); updateUI(); drawScene(); } else resetPlayback();
+    drawScene();
+}
+
+function buildPianoKeys(){
+    state.pianoKeys=[];
+    for(let m=state.lowestNote;m<=state.highestNote;m++)
+        state.pianoKeys.push({midi:m,isBlack:isBlk(m),isActive:false,activeColor:null});
+}
+
+// ======================== PLAYBACK — AUDIO-SYNC FIX ========================
+// Use Tone.Transport as master clock. Animation reads Transport.seconds for sync.
+
+async function startPlayback(){
+    if(!state.midiLoaded) return;
+    await Tone.start();
+    if(!state.samplerReady) await initSampler();
+
+    if(state.isPlaying){ pausePlayback(); return; }
+
+    state.isPlaying=true;
+    playIcon.style.display='none'; pauseIcon.style.display='block';
+    playBtn.classList.add('active');
+
+    // Cancel any previous transport events
+    Tone.Transport.cancel();
+    Tone.Transport.stop();
+
+    const offset=state.pausedAt;
+    const spd=state.speed;
+
+    // Schedule all notes relative to Transport start
+    state.notes.forEach(note=>{
+        let t0=note.startTime, remain=note.duration;
+        if(note.startTime<offset){
+            // baixo contínuo que ainda está soando nesse ponto: toca de novo, só com o que falta
+            if(!note.sus||note.endTime<=offset+0.05) return;
+            t0=offset; remain=note.endTime-offset;
+        }
+        if(t0>=proLimit()) return;
+        const tStart=(t0-offset)/spd;
+        const dur=Math.max(0.05, remain/spd);
+        Tone.Transport.schedule(time=>{
+            if(!state.isPlaying||!state.sampler||!state.samplerReady) return;
+            try { const smp=(note.bg&&BG.smp)?BG.smp:state.sampler; smp.triggerAttackRelease(nname(note.midi), dur, time, note.velocity); } catch(e){}
+        }, tStart);
+    });
+
+    Tone.Transport.start('+0.05');
+    animate();
+}
+
+function clearAudio(){
+    Tone.Transport.cancel();
+    Tone.Transport.stop();
+    if(state.sampler&&state.samplerReady){
+        try{ if(state.sampler.releaseAll) state.sampler.releaseAll(); }catch(e){}
+    }
+    try{ if(BG.smp) BG.smp.releaseAll(); }catch(e){}
+}
+
+function pausePlayback(){
+    state.pausedAt=state.currentTime;
+    state.isPlaying=false;
+    clearAudio();
+    playIcon.style.display='block'; pauseIcon.style.display='none';
+    playBtn.classList.remove('active');
+    if(state.animFrameId) cancelAnimationFrame(state.animFrameId);
+}
+
+function stopPlayback(){
+    state.isPlaying=false; state.pausedAt=0; state.currentTime=0;
+    clearAudio();
+    playIcon.style.display='block'; pauseIcon.style.display='none';
+    playBtn.classList.remove('active');
+    if(state.animFrameId) cancelAnimationFrame(state.animFrameId);
+    updateUI(); drawScene();
+}
+
+function resetPlayback(){
+    state.pausedAt=0; state.currentTime=0; state.isPlaying=false;
+    clearAudio();
+    playIcon.style.display='block'; pauseIcon.style.display='none';
+    playBtn.classList.remove('active');
+    updateUI(); drawScene();
+}
+
+function seekTo(newTime){
+    if(newTime>=proLimit()){ newTime=0; proPaywall('seek'); }
+    const wasPlaying=state.isPlaying;
+    if(wasPlaying){ state.isPlaying=false; clearAudio(); if(state.animFrameId) cancelAnimationFrame(state.animFrameId); }
+    state.pausedAt=Math.max(0,Math.min(state.duration,newTime));
+    state.currentTime=state.pausedAt;
+    if(wasPlaying) startPlayback();
+    else { updateUI(); drawScene(); }
+}
+
+// ======================== ANIMATION (sync via Transport) ========================
+function animate(){
+    if(!state.isPlaying) return;
+    // Transport.seconds = time elapsed since Transport.start(), not scaled by speed
+    state.currentTime = state.pausedAt + Tone.Transport.seconds * state.speed;
+    if(state.currentTime>=state.duration){ stopPlayback(); return; }
+    if(state.currentTime>=proLimit()){ stopPlayback(); proPaywall('fim'); return; }
+    updateUI(); drawScene();
+    state.animFrameId=requestAnimationFrame(animate);
+}
+
+function updateUI(){
+    const D=Math.min(state.duration,proLimit());
+    const p=D>0?(state.currentTime/D)*100:0;
+    progressFill.style.width=Math.min(100,Math.max(0,p))+'%';
+    currentTimeEl.textContent=fmt(state.currentTime);
+    totalTimeEl.textContent=fmt(state.duration);
+}
+
+// ======================== DESENHO ========================
+function drawScene(){
+    try{ liveScoreUpdate(); }catch(e){ console.error(e); }
+    if(!state.midiLoaded) return;
+    const active=new Map();
+    state.notes.forEach(n=>{ if(state.currentTime>=n.startTime&&state.currentTime<=n.endTime) active.set(n.midi,n.color); });
+    state.pianoKeys.forEach(k=>{ k.isActive=active.has(k.midi); k.activeColor=active.get(k.midi)||null; });
+    if(guitarPane.style.display!=='none') drawPiano();
+}
+function noteX(midi,cw){ return (midi-state.lowestNote)*cw/(state.highestNote-state.lowestNote+1); }
+function noteW(midi,cw){ return cw/(state.highestNote-state.lowestNote+1); }
+
+// ======================== DIGITAÇÃO DO VIOLÃO (6 cordas: Mi2 Lá2 Ré3 Sol3 Si3 Mi4, casas 0–19) ========================
+// Cada nota vira: corda + casa + dedo da mão esquerda (1–4; 0 = corda solta) + dedo da mão direita (p i m a).
+// Usa sempre a posição mais baixa no braço (a casa de menor número entre as cordas que alcançam a nota).
+// O violão soa uma oitava abaixo do que se escreve: a pauta mostra a nota escrita (oitava acima do som).
+const SOL=['Dó','Dó♯','Ré','Mi♭','Mi','Fá','Fá♯','Sol','Sol♯','Lá','Si♭','Si'], LET=[0,0,1,2,2,3,3,4,4,5,6,6], ACC=['','♯','','♭','','','♯','','♯','','♭',''];
+const GUITAR_OPEN=[40,45,50,55,59,64], GSTR_NOTE=['Mi','Lá','Ré','Sol','Si','Mi'], GSTR_LET=['E','A','D','G','B','e'], G_RH=['p','p','p','i','m','a'];
+const VG_TYPES={nylon:{n:'Violão de nylon',prog:24},aco:{n:'Violão de aço',prog:25}};
+window.vgProgram=()=>VG_TYPES[VG_TYPE].prog;
+function guitarPitch(m){ let w=m; while(w>83) w-=12; while(w<40) w+=12; return w; }
+function writtenOf(m){ return guitarPitch(m)+12; }
+function guitarFinger(m){
+    const p=guitarPitch(m); let best=null;
+    for(let s=5;s>=0;s--){ const fr=p-GUITAR_OPEN[s]; if(fr<0||fr>19) continue; if(!best||fr<best.fret) best={s,fret:fr}; }
+    if(!best) best={s:5,fret:19};
+    const pos=best.fret<=4?1:1+4*Math.floor((best.fret-1)/4);
+    return {s:best.s,fret:best.fret,f:best.fret?best.fret-pos+1:0};
+}
+
+// ---- várias notas ao mesmo tempo: escolhe corda + casa para cada nota, sem repetir corda e mantendo a mão perto ----
+function gCands(m){ const p=guitarPitch(m), c=[]; for(let s=0;s<6;s++){ const f=p-GUITAR_OPEN[s]; if(f>=0&&f<=19) c.push({s,fret:f}); } if(!c.length) c.push({s:5,fret:19}); return c.sort((a,b)=>a.fret-b.fret); }
+function gPick(midis,pinned){
+    const used=new Set(pinned.map(p=>p.s));
+    const cl=midis.map(m=>{ const c=gCands(m).filter(x=>!used.has(x.s)); return c.length?c:gCands(m); });
+    let best=null, bc=1e9; const cur=[];
+    (function go(j,us){
+        if(j===midis.length){
+            const fr=cur.concat(pinned).map(c=>c.fret).filter(f=>f>0);
+            const span=fr.length?Math.max(...fr)-Math.min(...fr):0;
+            const cost=(span>4?1000:0)+span*20+cur.reduce((a,c)=>a+c.fret,0);
+            if(cost<bc){ bc=cost; best=cur.slice(); }
+            return;
+        }
+        for(const c of cl[j]){ if(us.has(c.s)) continue; us.add(c.s); cur[j]=c; go(j+1,us); us.delete(c.s); }
+    })(0,new Set());
+    return best||cl.map(c=>c[0]);
+}
+// items: [{key,u,e,midi}] (início, fim, nota). Notas que ainda soam "seguram" a corda delas.
+function gAssignTimeline(items,tol){
+    const res=new Map(), list=items.slice().sort((a,b)=>a.u-b.u||a.midi-b.midi);
+    for(let i=0;i<list.length;){
+        let j=i+1; while(j<list.length&&list[j].u-list[i].u<=tol) j++;
+        const grp=list.slice(i,j), t0=list[i].u;
+        const pinned=[]; res.forEach((a,k)=>{ if(a.e>t0+tol) pinned.push(a); });
+        const fx=grp.filter(g=>g.fix), fr=grp.filter(g=>!g.fix);
+        fx.forEach(g=>{ res.set(g.key,{s:g.fix.s,fret:g.fix.fret,e:g.e}); pinned.push({s:g.fix.s,fret:g.fix.fret}); });
+        const pick=fr.length?gPick(fr.map(g=>g.midi),pinned):[];
+        fr.forEach((g,n)=>res.set(g.key,{s:pick[n].s,fret:pick[n].fret,e:g.e}));
+        i=j;
+    }
+    return res;
+}
+let gAssignMap=new Map(), gAssignSrc=null, gAssignLen=-1, gNl=[];
+function gActiveNotes(act){
+    if(!act.length) return [];
+    const all=state.notes||[];
+    if(gAssignSrc!==all||gAssignLen!==all.length){
+        gAssignSrc=all; gAssignLen=all.length; gNl=all.filter(n=>!n.bg);   // o soprano ao fundo (Acompanhamento) não aparece no braço
+        try{ gAssignMap=gAssignTimeline(gNl.map(n=>({key:n,u:n.startTime,e:n.endTime,midi:n.midi,fix:n.fix})),0.02); }catch(e){ gAssignMap=new Map(); }
+    }
+    const nl=gNl, t=state.currentTime, out=[], miss=[];
+    act.forEach(k=>{
+        const note=nl.find(n=>n.midi===k.midi&&t>=n.startTime&&t<=n.endTime), a=note&&gAssignMap.get(note);
+        if(a) out.push({midi:k.midi,color:k.activeColor,s:a.s,fret:a.fret});
+        else if(!all.some(n=>n.bg&&n.midi===k.midi&&t>=n.startTime&&t<=n.endTime)) miss.push(k);
+    });
+    if(miss.length){ const pick=gPick(miss.map(k=>k.midi),out); miss.forEach((k,i)=>out.push({midi:k.midi,color:k.activeColor,s:pick[i].s,fret:pick[i].fret})); }
+    // dedos da mão esquerda: uma posição só para todas as notas apertadas
+    const fr=out.filter(n=>n.fret>0).map(n=>n.fret);
+    if(fr.length){
+        const base=Math.min(...fr), pos0=base<=4?1:1+4*Math.floor((base-1)/4), pos=Math.max(...fr)<=pos0+3?pos0:base;
+        out.forEach(n=>{ n.f=n.fret?Math.max(1,Math.min(4,n.fret-pos+1)):0; });
+    } else out.forEach(n=>{ n.f=0; });
+    out.forEach(n=>{ n.pw=writtenOf(n.midi); });
+    return out.sort((a,b)=>a.pw-b.pw||a.s-b.s);
+}
+// ======================== ACORDES (forma da mão esquerda) ========================
+// Um acorde marcado no editor vale a partir da posição dele até o próximo acorde. Ele NÃO muda o som:
+// só diz como a mão está posicionada. Quem soa são as notas escritas na tablatura.
+const CH_PC=['C','C♯','D','E♭','E','F','F♯','G','A♭','A','B♭','B'];
+const CH_PT=['Dó','Dó♯','Ré','Mi♭','Mi','Fá','Fá♯','Sol','Lá♭','Lá','Si♭','Si'];
+const CH_Q={maj:{s:'',n:'maior'},m:{s:'m',n:'menor'},'7':{s:'7',n:'com sétima'},m7:{s:'m7',n:'menor com sétima'},maj7:{s:'maj7',n:'com sétima maior'},
+    sus4:{s:'sus4',n:'sus4'},sus2:{s:'sus2',n:'sus2'},dim:{s:'dim',n:'diminuto'},'5':{s:'5',n:'(power chord)'}};
+function chName(ch){ return CH_PC[ch.root]+CH_Q[ch.q].s; }
+function chLong(ch){ return CH_PT[ch.root]+' '+CH_Q[ch.q].n; }
+// formas abertas: [nota(0=Dó), tipo, casas por corda (Mi Lá Ré Sol Si mi), dedos por corda]
+const CH_OPEN_LIST=[
+ [0,'maj','x32010','x32010'],[0,'7','x32310','x32410'],[0,'maj7','x32000','x32000'],
+ [2,'maj','xx0232','xx0132'],[2,'m','xx0231','xx0231'],[2,'7','xx0212','xx0213'],[2,'maj7','xx0222','xx0111'],[2,'m7','xx0211','xx0211'],[2,'sus4','xx0233','xx0134'],[2,'sus2','xx0230','xx0120'],
+ [4,'maj','022100','023100'],[4,'m','022000','023000'],[4,'7','020100','020100'],[4,'m7','020000','020000'],[4,'maj7','021100','021100'],[4,'sus4','022200','023400'],
+ [7,'maj','320003','210003'],[7,'7','320001','320001'],[7,'maj7','320002','320001'],
+ [9,'maj','x02220','x01230'],[9,'m','x02210','x02310'],[9,'7','x02020','x02030'],[9,'m7','x02010','x02010'],[9,'maj7','x02120','x02130'],[9,'sus4','x02230','x02340'],[9,'sus2','x02200','x01200'],
+ [11,'7','x21202','x21304']
+];
+// formas com pestana (móveis): "casas relativas / dedos"; a raiz fica na corda Mi grave (forma de Mi) ou Lá (forma de Lá)
+const CH_FORM={
+ E:{maj:['022100','134211'],m:['022000','134111'],'7':['020100','131211'],m7:['020000','131111'],maj7:['021100','142311'],sus4:['022200','133311'],'5':['022xxx','134xxx']},
+ A:{maj:['x02220','x12341'],m:['x02210','x13421'],'7':['x02020','x13141'],m7:['x02010','x13121'],maj7:['x02120','x13241'],sus4:['x02230','x12341'],sus2:['x02200','x13411'],'5':['x022xx','x134xx'],dim:['x0121x','x1243x']}
+};
+const chParse=s=>s.split('').map(ch=>ch==='x'?-1:+ch);
+const CH_OPEN_MAP={}; CH_OPEN_LIST.forEach(o=>{ CH_OPEN_MAP[o[0]+'|'+o[1]]={frets:chParse(o[2]),fing:chParse(o[3]).map(v=>v<0?0:v)}; });
+const chCache={};
+function chVoicing(root,q){
+    const key=root+'|'+q; if(chCache[key]) return chCache[key];
+    let v=CH_OPEN_MAP[key];
+    if(!v){
+        let best=null;
+        [['E',4],['A',9]].forEach(([fn,op])=>{ const f=CH_FORM[fn][q]; if(!f) return; const b=(root-op+12)%12; if(!best||b<best.b) best={b,f}; });
+        if(!best) best={b:0,f:CH_FORM.E.maj};
+        const off=chParse(best.f[0]), fg=chParse(best.f[1]).map(x=>x<0?0:x), b=best.b;
+        const frets=off.map(o=>o<0?-1:b+o);
+        let fing=fg;
+        if(b===0){ // sem pestana: cordas soltas ficam livres e os dedos são numerados pela ordem das casas
+            fing=frets.map(()=>0); let n=1;
+            frets.map((f,i)=>({f,i})).filter(x=>x.f>0).sort((a,c)=>a.f-c.f||a.i-c.i).forEach(x=>{ fing[x.i]=Math.min(4,n++); });
+        }
+        v={frets,fing};
+    }
+    const fr=v.frets.filter(f=>f>0); v.base=fr.length?Math.min(...fr):0;
+    return chCache[key]=v;
+}
+window.vgChordTL=[];
+function vgChordAt(t){ const tl=window.vgChordTL||[]; let r=null; for(let i=0;i<tl.length;i++){ if(tl[i].t<=t+0.001) r=tl[i]; else break; } return r; }
+function vgSetChordTL(){
+    const bpm=parseInt(document.getElementById('scoreBpm').value)||120, spb=60/bpm;
+    window.vgChordTL=scoreChords.map(c=>({t:(c.beat-1)*spb,root:c.root,q:c.q})).sort((a,b)=>a.t-b.t);
+}
+// diagrama pequeno do acorde (usado no editor)
+function chDrawDiagram(cv,voic,label){
+    const c=cv.getContext('2d'), W=cv.width, H=cv.height; c.clearRect(0,0,W,H);
+    const css=getComputedStyle(cv), col=css.color||'#ccc';
+    const x0=22,x1=W-14,y0=34,fh=(H-y0-8)/5, sx=i=>x0+(x1-x0)*i/5;
+    const base=voic.base>3?voic.base:1;
+    c.strokeStyle=col; c.fillStyle=col; c.lineWidth=1; c.globalAlpha=.8;
+    for(let i=0;i<6;i++){ c.beginPath(); c.moveTo(sx(i),y0); c.lineTo(sx(i),y0+5*fh); c.stroke(); }
+    for(let f=0;f<=5;f++){ c.lineWidth=(f===0&&base===1)?3:1; c.beginPath(); c.moveTo(x0,y0+f*fh); c.lineTo(x1,y0+f*fh); c.stroke(); }
+    c.globalAlpha=1; c.font='700 11px Inter,sans-serif'; c.textAlign='center'; c.fillText(label,W/2,11);
+    if(base>1){ c.font='600 10px Inter,sans-serif'; c.textAlign='right'; c.fillText(base+'ª',x0-4,y0+fh*.65); }
+    c.textAlign='center';
+    voic.frets.forEach((f,i)=>{
+        if(f<0){ c.font='700 11px Inter,sans-serif'; c.fillText('×',sx(i),y0-6); return; }
+        if(f===0){ c.beginPath(); c.arc(sx(i),y0-9,3.2,0,7); c.lineWidth=1.2; c.stroke(); return; }
+        const r=f-base+1; if(r<1||r>5) return;
+        c.fillStyle='#ef5350'; c.beginPath(); c.arc(sx(i),y0+(r-.5)*fh,6.2,0,7); c.fill();
+        c.fillStyle='#fff'; c.font='700 9px Inter,sans-serif'; c.fillText(String(voic.fing[i]||''),sx(i),y0+(r-.5)*fh+3.2); c.fillStyle=col;
+    });
+}
+
+// ======================== DESENHO DO VIOLÃO FOLK (preto, detalhes bege; deitado: braço à direita, caixa à esquerda) ========================
+const GL={CX:330,NUT:170,BR:860,FB:630,HX:330,HY:700,HR:44};
+const gFretY=n=>GL.NUT+(GL.BR-GL.NUT)*(1-Math.pow(2,-n/12));
+const gStrX=(i,y)=>{ const t=(y-GL.NUT)/(GL.BR-GL.NUT), a=-50+20*i, b=-65+26*i; return GL.CX+a+(b-a)*t; };
+const gFbHalf=y=>58+12*Math.max(0,Math.min(1,(y-GL.NUT)/(GL.FB-GL.NUT)));
+const G_BEIGE='#d9c7a0', G_HOT='#ff4f8b';
+// corpo estilo folk (dreadnought): ombros largos, cintura suave
+function gBodyPath(CX){
+    // folk com cutaway (corte do lado dos graves, à esquerda de quem olha de frente) e caixa grande
+    const segs=[[[120,495],[165,540],[168,610]],[[168,655],[150,670],[152,705]],[[154,760],[215,775],[215,860]],[[215,930],[130,962],[0,962]]];
+    const p=new Path2D(); p.moveTo(CX+66,500);
+    segs.forEach(s=>p.bezierCurveTo(CX+s[0][0],s[0][1],CX+s[1][0],s[1][1],CX+s[2][0],s[2][1]));
+    for(let i=segs.length-1;i>=2;i--){
+        const prev=segs[i-1][2];
+        p.bezierCurveTo(CX-segs[i][1][0],segs[i][1][1],CX-segs[i][0][0],segs[i][0][1],CX-prev[0],prev[1]);
+    }
+    p.bezierCurveTo(CX-150,670,CX-166,655,CX-164,630);     // cintura -> ombro
+    p.bezierCurveTo(CX-164,610,CX-150,595,CX-132,590);     // ponta do cutaway
+    p.bezierCurveTo(CX-105,582,CX-80,570,CX-62,548);       // curva côncava até o braço
+    p.closePath(); return p;
+}
+function vgSwitchSampler(){
+    try{ if(state.piano) state.piano.dispose(); }catch(e){}
+    state.piano=null; state.samplerReady=!!state.synth; state.sampler=state.synth||null; samplerPromise=null;
+    initSampler();
+}
+function drawPiano(){
+    const R=guitarPane.getBoundingClientRect(), w=R.width, h=R.height, c=pianoCtx;
+    c.clearRect(0,0,w,h);
+    if(w<40||h<40) return;
+    const act=state.pianoKeys.filter(k=>k.isActive);
+    const gn=gActiveNotes(act), gOn={}; gn.forEach(n=>{ gOn[n.s]=n; });
+    const chord=vgChordAt(state.currentTime);
+    const LEN=950, THK=470, capH=Math.min(40,h*.15);
+    const s=Math.max(.05,Math.min((w-12)/LEN,(h-capH-6)/THK));
+    const {CX,NUT,BR,FB}=GL, now=performance.now()/1000;
+    const tx=w/2+s*492, ty=capH+(h-capH)/2-s*CX;
+
+    // brilho rosa atrás do violão enquanto toca
+    if(gn.length){ const g=c.createRadialGradient(w/2,ty+s*CX,0,w/2,ty+s*CX,Math.max(w,h)*.5); g.addColorStop(0,'rgba(255,79,139,.13)'); g.addColorStop(1,'rgba(255,79,139,0)'); c.fillStyle=g; c.fillRect(0,0,w,h); }
+
+    // legenda: nome das notas e acorde
+    c.textAlign='left'; c.textBaseline='middle';
+    const fs=Math.round(Math.max(13,Math.min(24,capH*.62)));
+    c.font='800 '+fs+'px Inter,sans-serif'; c.fillStyle='#ece9ff';
+    const names=gn.length?gn.slice().reverse().map(n=>SOL[n.pw%12]).join('  '):'';
+    c.fillText(names,12,capH/2+2,w*.5);
+    if(chord){ c.textAlign='right'; c.font='700 '+Math.round(fs*.78)+'px Inter,sans-serif'; c.fillStyle='#ffc857'; c.fillText('Acorde '+chName(chord),w-12,capH/2+2,w*.45); }
+
+    c.save(); c.beginPath(); c.rect(0,capH,w,h-capH); c.clip();
+    c.translate(tx,ty); c.scale(s,s); c.rotate(Math.PI/2);
+    c.lineJoin='round'; c.lineCap='round';
+    // texto sempre em pé (o desenho está girado 90°); tamanho dado em pixels da tela
+    const TX=(str,x,y,px,col,align,base)=>{ c.save(); c.translate(x,y); c.rotate(-Math.PI/2); c.font='700 '+(px/s)+'px Inter,sans-serif'; c.fillStyle=col; c.textAlign=align||'center'; c.textBaseline=base||'middle'; c.fillText(str,0,0); c.restore(); };
+    const edge='#030304';
+    // --- cabeça (headstock) e tarraxas ---
+    const hsPath=()=>{ c.beginPath(); c.moveTo(CX-56,166); c.lineTo(CX-62,70); c.quadraticCurveTo(CX-64,26,CX-34,22); c.lineTo(CX+34,22); c.quadraticCurveTo(CX+64,26,CX+62,70); c.lineTo(CX+56,166); c.closePath(); };
+    const hg=c.createLinearGradient(CX-64,0,CX+64,0); hg.addColorStop(0,'#09090c'); hg.addColorStop(.5,'#1e1e25'); hg.addColorStop(1,'#09090c');
+    c.fillStyle=hg; c.strokeStyle=edge; c.lineWidth=3; hsPath(); c.fill(); c.stroke();
+    c.save(); c.translate(CX,94); c.scale(.8,.86); c.translate(-CX,-94); c.strokeStyle=G_BEIGE; c.globalAlpha=.8; c.lineWidth=1.8/.8; hsPath(); c.stroke(); c.restore();
+    [62,92,122].forEach(y=>[-1,1].forEach(sd=>{
+        c.fillStyle='#bfb38f'; c.strokeStyle=edge; c.lineWidth=2;
+        c.fillRect(sd>0?CX+60:CX-76,y-3,16,6); c.strokeRect(sd>0?CX+60:CX-76,y-3,16,6);
+        c.fillStyle=G_BEIGE; c.beginPath(); c.ellipse(CX+sd*88,y,9,13,0,0,Math.PI*2); c.fill(); c.stroke();
+        c.fillStyle='#8f8466'; c.beginPath(); c.arc(CX+sd*22,y,5,0,Math.PI*2); c.fill(); c.stroke();
+    }));
+    // --- corpo ---
+    const body=gBodyPath(CX), bg=c.createLinearGradient(CX-200,0,CX+200,0);
+    bg.addColorStop(0,'#08080b'); bg.addColorStop(.5,'#22222a'); bg.addColorStop(1,'#08080b');
+    c.fillStyle=bg; c.fill(body);
+    const hl=c.createRadialGradient(CX-60,790,5,CX-60,790,230); hl.addColorStop(0,'rgba(255,255,255,.10)'); hl.addColorStop(1,'rgba(255,255,255,0)');
+    c.fillStyle=hl; c.fill(body);
+    c.strokeStyle=edge; c.lineWidth=10; c.stroke(body);
+    c.strokeStyle=G_BEIGE; c.lineWidth=3.4; c.stroke(body);                      // friso bege na borda
+    c.save(); c.translate(CX,728); c.scale(.95,.96); c.translate(-CX,-728); c.strokeStyle='rgba(217,199,160,.55)'; c.lineWidth=1.5/.95; c.stroke(body); c.restore();
+    // escudo (só o contorno, em linha bege)
+    c.strokeStyle='rgba(217,199,160,.85)'; c.lineWidth=2.4; c.beginPath();
+    c.moveTo(CX+34,768); c.bezierCurveTo(CX+100,742,CX+156,770,CX+142,822); c.bezierCurveTo(CX+128,862,CX+72,850,CX+50,812); c.stroke();
+    // boca e rosácea (anéis bege)
+    const [hx,hy,hr]=[GL.HX,GL.HY,GL.HR];
+    c.strokeStyle=G_BEIGE; c.lineWidth=3; c.beginPath(); c.arc(hx,hy,hr+7,0,Math.PI*2); c.stroke();
+    c.lineWidth=1.4; c.beginPath(); c.arc(hx,hy,hr+13,0,Math.PI*2); c.stroke();
+    c.save(); c.globalAlpha=.8; c.lineWidth=1.8; c.setLineDash([4,4]); c.beginPath(); c.arc(hx,hy,hr+20,0,Math.PI*2); c.stroke(); c.restore();
+    const hole=c.createRadialGradient(hx,hy,4,hx,hy,hr); hole.addColorStop(0,'#000'); hole.addColorStop(1,'#0d0d10');
+    c.fillStyle=hole; c.beginPath(); c.arc(hx,hy,hr,0,Math.PI*2); c.fill();
+    // cavalete: peça preta com friso bege, pestana e pinos
+    c.fillStyle='#050507'; c.strokeStyle=G_BEIGE; c.lineWidth=2; c.beginPath(); c.roundRect(CX-92,852,184,34,8); c.fill(); c.stroke();
+    c.strokeStyle=G_BEIGE; c.lineWidth=3; c.beginPath(); c.moveTo(CX-76,860); c.lineTo(CX+76,860); c.stroke();
+    for(let i=0;i<6;i++){ const px=gStrX(i,BR); c.fillStyle=G_BEIGE; c.strokeStyle=edge; c.lineWidth=1.4; c.beginPath(); c.arc(px,874,3.7,0,Math.PI*2); c.fill(); c.stroke(); }
+    // --- braço: escala preta, friso bege nas bordas, trastes e pestana em linhas bege ---
+    const fbg=c.createLinearGradient(CX-72,0,CX+72,0); fbg.addColorStop(0,'#08080a'); fbg.addColorStop(.5,'#17171d'); fbg.addColorStop(1,'#08080a');
+    c.fillStyle=fbg; c.strokeStyle='#000'; c.lineWidth=3;
+    c.beginPath(); c.moveTo(CX-58,NUT); c.lineTo(CX+58,NUT); c.lineTo(CX+70,FB); c.quadraticCurveTo(CX,FB+10,CX-70,FB); c.closePath(); c.fill(); c.stroke();
+    c.strokeStyle='rgba(217,199,160,.8)'; c.lineWidth=1.6;
+    [-1,1].forEach(sd=>{ c.beginPath(); c.moveTo(CX+sd*(58-4.5),NUT+3); c.lineTo(CX+sd*(70-4.5),FB-3); c.stroke(); });
+    c.fillStyle='rgba(217,199,160,.75)';
+    [3,5,7,9,15,17,19].forEach(n=>{ const y=(gFretY(n-1)+gFretY(n))/2; c.beginPath(); c.arc(CX,y,4.2,0,Math.PI*2); c.fill(); });
+    { const y=(gFretY(11)+gFretY(12))/2; [-20,20].forEach(dx=>{ c.beginPath(); c.arc(CX+dx,y,4.2,0,Math.PI*2); c.fill(); }); }
+    c.strokeStyle='rgba(217,199,160,.9)'; c.lineWidth=2;
+    for(let n=1;n<=19;n++){ const y=gFretY(n), hw=gFbHalf(y)-5; c.beginPath(); c.moveTo(CX-hw,y); c.lineTo(CX+hw,y); c.stroke(); }
+    c.fillStyle=G_BEIGE; c.strokeStyle='#000'; c.lineWidth=1.6; c.beginPath(); c.roundRect(CX-60,NUT-8,120,9,2); c.fill(); c.stroke();
+    [3,5,7,9,12,15,17,19].forEach(n=>{ const y=(gFretY(n-1)+gFretY(n))/2; TX(String(n),CX-gFbHalf(y)-6,y,Math.max(8,Math.min(11,5.5*s*2.2)),'rgba(217,199,160,.6)','center','bottom'); });
+    // --- cordas de aço (as graves são encapadas) ---
+    const bassC='#cdb98a', trebC='#e6e4de';
+    const SC=[bassC,bassC,bassC,trebC,trebC,trebC], SW=[3.8,3.2,2.7,2.1,1.6,1.2];
+    const post=[[-1,122],[-1,92],[-1,62],[1,62],[1,92],[1,122]];
+    for(let i=0;i<6;i++){
+        const on=!!gOn[i], x0=gStrX(i,NUT), xb=gStrX(i,BR);
+        c.lineWidth=SW[i]; c.strokeStyle=SC[i];
+        c.beginPath(); c.moveTo(x0,NUT); c.lineTo(CX+post[i][0]*22,post[i][1]); c.stroke();
+        c.beginPath(); c.moveTo(xb,BR); c.lineTo(xb,BR+14); c.stroke();
+        if(!on){ c.beginPath(); c.moveTo(x0,NUT); c.lineTo(xb,BR); c.stroke(); }
+        if(i<3){ c.save(); c.strokeStyle='rgba(0,0,0,.3)'; c.setLineDash([1.5,2]); c.beginPath(); c.moveTo(x0,NUT); c.lineTo(xb,BR); c.stroke(); c.restore(); }
+    }
+    // cordas que estão soando: vibram em branco com brilho rosa
+    gn.forEach(fg=>{
+        const i=fg.s, y0=fg.fret?gFretY(fg.fret):NUT;
+        c.lineWidth=SW[i]; c.strokeStyle=SC[i];
+        if(fg.fret){ c.beginPath(); c.moveTo(gStrX(i,NUT),NUT); c.lineTo(gStrX(i,y0),y0); c.stroke(); }
+        c.save(); c.shadowColor=G_HOT; c.shadowBlur=14; c.strokeStyle='#fff'; c.lineWidth=SW[i]+1.2; c.beginPath();
+        const amp=3*(.65+.35*Math.sin(now*6));
+        for(let y=y0;y<=BR;y+=6){ const x=gStrX(i,y)+amp*Math.sin(Math.PI*(y-y0)/(BR-y0))*Math.sin(now*70); y===y0?c.moveTo(x,y):c.lineTo(x,y); }
+        c.lineTo(gStrX(i,BR),BR); c.stroke(); c.restore();
+    });
+    for(let i=0;i<6;i++) TX(GSTR_LET[i],gStrX(i,NUT),NUT-30,Math.max(7,Math.min(12,s*21)),gOn[i]?'#fff':'rgba(217,199,160,.7)');
+    // casa apertada (ponto rosa) ou corda solta (anel rosa) — sem dedos, só a posição
+    const rMin=6.5/s;
+    gn.forEach(fg=>{
+        if(fg.fret){
+            const ya=gFretY(fg.fret-1), yb=gFretY(fg.fret), Y=(ya+yb)/2, X=gStrX(fg.s,Y), r=Math.min(12.5,Math.max(8.5,Math.min(13,(yb-ya)*.55),rMin));
+            c.save(); c.shadowColor=G_HOT; c.shadowBlur=24; c.fillStyle=G_HOT; c.beginPath(); c.arc(X,Y,r,0,Math.PI*2); c.fill(); c.restore();
+            c.lineWidth=2.6; c.strokeStyle='#fff'; c.beginPath(); c.arc(X,Y,r,0,Math.PI*2); c.stroke();
+        } else {
+            const X=gStrX(fg.s,NUT), Y=NUT-15, r=Math.min(11,Math.max(7.5,rMin*.8));
+            c.save(); c.shadowColor=G_HOT; c.shadowBlur=20; c.fillStyle='rgba(255,79,139,.22)'; c.beginPath(); c.arc(X,Y,r,0,Math.PI*2); c.fill(); c.restore();
+            c.lineWidth=3; c.strokeStyle=G_HOT; c.beginPath(); c.arc(X,Y,r,0,Math.PI*2); c.stroke();
+        }
+    });
+    c.restore();
+    c.globalAlpha=1; c.shadowBlur=0; c.textAlign='start'; c.textBaseline='alphabetic';
+}
+
+// ======================== EVENTOS DO PLAYER ========================
+playBtn.addEventListener('click',startPlayback);
+stopBtn.addEventListener('click',stopPlayback);
+rewindBtn.addEventListener('click',()=>{ if(state.isPlaying) stopPlayback(); else seekTo(0); });
+
+function handleSeek(cx){
+    if(!state.midiLoaded) return;
+    const r=progressBar.getBoundingClientRect();
+    seekTo(Math.max(0,Math.min(1,(cx-r.left)/r.width))*state.duration);
+}
+progressBar.addEventListener('click',e=>handleSeek(e.clientX));
+progressBar.addEventListener('touchstart',e=>{ e.preventDefault(); handleSeek(e.touches[0].clientX); },{passive:false});
+
+speedSelect.addEventListener('change',e=>{
+    state.speed=parseFloat(e.target.value);
+    if(state.isPlaying){ const cp=state.currentTime; pausePlayback(); state.pausedAt=cp; startPlayback(); }
+});
+volumeSlider.addEventListener('input',e=>{
+    state.volume=parseInt(e.target.value)/100;
+    try{ applyVolume(); }catch(err){}
+});
+document.addEventListener('keydown',e=>{
+    const tag=e.target.tagName;
+    if(tag==='INPUT'||tag==='SELECT'||tag==='TEXTAREA') return;
+    if(e.code==='Space'){ e.preventDefault(); startPlayback(); }
+    else if(e.code==='KeyS') stopPlayback();
+    else if(e.code==='ArrowLeft'){ if(state.midiLoaded) seekTo(state.pausedAt-5); }
+    else if(e.code==='ArrowRight'){ if(state.midiLoaded) seekTo(state.pausedAt+5); }
+});
+
+// o que mostrar na tela e como mostrar a partitura
+const viewSel=document.getElementById('viewSel'), scSel=document.getElementById('scSel');
+viewSel.value=VIEW; scSel.value=SCMODE;
+function syncScSel(){ scSel.parentElement.style.display=VIEW==='violao'?'none':''; }
+syncScSel();
+viewSel.addEventListener('change',()=>{ VIEW=viewSel.value; try{ localStorage.setItem('vgView',VIEW); }catch(e){} syncScSel(); resizeCanvases(); if(state.midiLoaded) drawScene(); });
+scSel.addEventListener('change',()=>{ SCMODE=scSel.value; try{ localStorage.setItem('vgScMode',SCMODE); }catch(e){} LIVE.sig=''; if(state.midiLoaded) drawScene(); });
+
+// tipo de som do violão
+(function(){
+    const sel=document.getElementById('vgType');
+    Object.entries(VG_TYPES).forEach(([k,v])=>{ const o=document.createElement('option'); o.value=k; o.textContent=v.n; sel.appendChild(o); });
+    sel.value=VG_TYPE;
+    sel.addEventListener('change',()=>{ VG_TYPE=sel.value; try{ localStorage.setItem('vgType',VG_TYPE); }catch(e){} vgSwitchSampler(); });
+})();
+// painel de opções
+document.getElementById('optBtn').addEventListener('click',e=>{
+    const p=document.getElementById('optsPanel'), on=p.classList.toggle('open'); e.currentTarget.classList.toggle('on',on);
+    setTimeout(()=>{ resizeCanvases(); if(state.midiLoaded) drawScene(); },30);
+});
+
+// janelas (modais)
+function openModal(id){ document.getElementById(id).hidden=false; document.body.style.overflow='hidden'; }
+function closeModals(){ document.querySelectorAll('.pb-modal').forEach(m=>m.hidden=true); document.body.style.overflow=''; }
+document.querySelectorAll('.pb-modal').forEach(m=>m.addEventListener('click',e=>{ if(e.target===m||e.target.hasAttribute('data-close')) closeModals(); }));
+document.addEventListener('keydown',e=>{ if(e.key==='Escape'){ closeModals(); document.getElementById('pixModal').classList.add('hidden'); } });
+document.getElementById('hinosBtn').addEventListener('click',openHinos);
+document.getElementById('hinoQ').addEventListener('input',renderHinos);
+
+// ======================== SERVICE WORKER ========================
+if('serviceWorker' in navigator){
+    window.addEventListener('load',()=>{
+        navigator.serviceWorker.register('./sw.js',{updateViaCache:'none'}).then(reg=>{
+            reg.update().catch(()=>{});
+            document.addEventListener('visibilitychange',()=>{ if(!document.hidden) reg.update().catch(()=>{}); });
+        }).catch(()=>{});
+        let reloaded=false, hadController=!!navigator.serviceWorker.controller;
+        navigator.serviceWorker.addEventListener('controllerchange',()=>{
+            if(!hadController){ hadController=true; return; }
+            if(reloaded) return; reloaded=true;
+            if(!state.midiLoaded) location.reload();
+            else toast('Nova versão disponível — recarregue a página','success');
+        });
+    });
+}
+
+// ======================== INIT ========================
+resizeCanvases();
+try{ new ResizeObserver(()=>{ resizeCanvases(); if(state.midiLoaded) drawScene(); }).observe(mainContainer); }catch(e){}
+initSampler(); // começa a baixar as amostras do violão em segundo plano
+
+// ======================== PIX ========================
+const PIX_KEY='meuidwp@duck.com';
+document.getElementById('btnPix').addEventListener('click',()=>document.getElementById('pixModal').classList.remove('hidden'));
+document.getElementById('btnClosePix').addEventListener('click',()=>document.getElementById('pixModal').classList.add('hidden'));
+document.getElementById('pixModal').addEventListener('click',e=>{ if(e.target===document.getElementById('pixModal')) document.getElementById('pixModal').classList.add('hidden'); });
+document.getElementById('btnCopyPix').addEventListener('click',()=>{
+    const btn=document.getElementById('btnCopyPix'), done=()=>{ const o=btn.textContent; btn.textContent='✅ Copiado!'; setTimeout(()=>{ btn.textContent=o; },2000); };
+    if(navigator.clipboard&&navigator.clipboard.writeText) navigator.clipboard.writeText(PIX_KEY).then(done,()=>{});
+    else { const t=document.createElement('textarea'); t.value=PIX_KEY; document.body.appendChild(t); t.select(); try{ document.execCommand('copy'); done(); }catch(e){} t.remove(); }
+});
+
+// ======================== INSTALAR COMO APLICATIVO ========================
+let deferredInstallPrompt=null;
+const btnInstall=document.getElementById('btnInstall');
+const isStandalone=()=>(window.matchMedia&&window.matchMedia('(display-mode: standalone)').matches)||navigator.standalone===true;
+if(isStandalone()) btnInstall.classList.add('hidden');
+window.addEventListener('beforeinstallprompt',e=>{ e.preventDefault(); deferredInstallPrompt=e; });
+btnInstall.addEventListener('click',async()=>{
+    if(deferredInstallPrompt){
+        deferredInstallPrompt.prompt();
+        const {outcome}=await deferredInstallPrompt.userChoice;
+        if(outcome==='accepted') btnInstall.classList.add('hidden');
+        deferredInstallPrompt=null;
+    } else openModal('mInstall');   // iPhone e navegadores sem instalação automática: mostra como fazer
+});
+window.addEventListener('appinstalled',()=>{ btnInstall.classList.add('hidden'); deferredInstallPrompt=null; });
+
+
+</script>
+<script>
+const PCL=[0,2,4,5,7,9,11], KS_SHARP_L=[3,0,4,1,5,2,6], KS_FLAT_L=[6,2,5,1,4,0,3];
+let KEY={n:0,flat:false};
+function keySigArr(){ const a=[0,0,0,0,0,0,0]; for(let i=0;i<KEY.n;i++) a[(KEY.flat?KS_FLAT_L:KS_SHARP_L)[i]]=KEY.flat?-1:1; return a; }
+let KSIG=keySigArr();
+function spellMidi(m,acc){
+    const pc=((m%12)+12)%12;
+    if(acc){ const b=m-acc, i=PCL.indexOf(((b%12)+12)%12); if(i>=0) return {l:i,a:acc,o:Math.floor(b/12)-1}; }
+    for(let l=0;l<7;l++) if(KSIG[l]&&((PCL[l]+KSIG[l]+12)%12)===pc) return {l,a:KSIG[l],o:Math.floor((m-KSIG[l])/12)-1};
+    const i=PCL.indexOf(pc); if(i>=0) return {l:i,a:0,o:Math.floor(m/12)-1};
+    if(KEY.flat) return {l:PCL.indexOf((pc+1)%12),a:-1,o:Math.floor((m+1)/12)-1};
+    return {l:PCL.indexOf((pc+11)%12),a:1,o:Math.floor((m-1)/12)-1};
+}
+/* ============================================================================
+   PARTITURA DO HINO ABERTO NO PLAYER (PDF) + PARTITURA AO VIVO NA TELA INICIAL
+   Notação (escrita uma oitava acima do som) + tablatura, com a mesma digitação mostrada no braço.
+   ========================================================================== */
+function srcQ(t){
+    const tm=state.srcTm;
+    if(!tm||!tm.length) return t/(60/Math.max(20,Math.min(300,state.srcBpm||120)));
+    let k=tm.length-1; while(k>0&&tm[k].s>t+1e-9) k--;
+    return tm[k].q+(t-tm[k].s)*tm[k].bpm/60;
+}
+const playerTs=()=>(state.srcTs&&PB_MEASURE[state.srcTs])?state.srcTs:'4/4';
+// notas do violão (o que toca: som real, já transposto) -> formato do motor; a digitação (fix) vira corda/casa da tablatura
+function playerScoreNotes(src){
+    src=src||state.notes;
+    const q=0.25, pk=state.srcPickup||0;
+    return src.filter(n=>!n.dup).map(n=>{
+        const a=srcQ(n.startTime)+pk, b=srcQ(n.endTime)+pk;
+        const beat=1+Math.max(0,Math.round(a/q))*q, end=1+Math.max(0,Math.round(b/q))*q;
+        const o={midi:Math.max(0,Math.min(127,n.midi)), beat, duration:Math.max(q,end-beat),
+            velocity:Math.max(1,Math.min(127,Math.round((n.velocity||.7)*127))), voice:n.track|0,
+            accidental:0,dotted:false,dotted2:false,tied:false,articulations:[],t0:n.startTime,t1:n.endTime};
+        if(n.fix&&n.fix.s!=null){ o.ts=n.fix.s; o.tf=n.fix.fret; }
+        return o;
+    });
+}
+// armadura do hino já transposta (state.t semitons); prefere ≤6 acidentes
+function srcKeyObj(){
+    const f=state.srcKey; if(f==null||isNaN(f)) return {n:0,flat:false};
+    const t=state.t||0, sh0=((7*t)%12+12)%12, sh=sh0>6?sh0-12:sh0;
+    let k=Number(f)+sh; while(k>6) k-=12; while(k<-6) k+=12;
+    return {n:Math.abs(k),flat:k<0};
+}
+function withPlayerSource(fn,src){
+    const bakN=scoreNotes, bpmEl=document.getElementById('scoreBpm'), bakB=bpmEl.value, bakK=KEY;
+    try{
+        KEY=srcKeyObj(); KSIG=keySigArr();
+        scoreNotes=playerScoreNotes(src);
+        bpmEl.value=Math.max(20,Math.min(300,Math.round(state.srcBpm||120)));
+        return fn();
+    } finally { scoreNotes=bakN; bpmEl.value=bakB; KEY=bakK; KSIG=keySigArr(); }
+}
+// notas de uma "versão" do hino: a que está tocando ou outra (violão/todas/voz) montada do arquivo
+function gtVersionNotes(v){
+    const src=state.src;
+    if(!src||v==='cur'||String(v)===String(state.mode)) return state.notes;
+    const mode=(v==='violao'||v==='all')?v:parseInt(v);
+    return vgNotesFor(src,mode,state.t||0);
+}
+const LIVE={sig:'',notesRef:null,svgs:[],lay:[],heads:[],map:[],act:[],blocks:[],sysBlk:[],blk:-1,shown:null,ok:false,W:840,paper:null,msg:''};
+const LIVE_COL='#e0185f', PAPER_COL='#f7f0df';
+function livePaper(){ return LIVE.paper||(LIVE.paper=document.getElementById('scorePaper')); }
+function liveMsg(html,key){
+    if(LIVE.msg===key) return;
+    LIVE.msg=key; LIVE.shown=null; LIVE.blk=-1; LIVE.act=[];
+    livePaper().innerHTML='<div class="score-msg">'+html+'</div>';
+}
+function liveBuild(){
+    LIVE.svgs=[]; LIVE.lay=[]; LIVE.heads=[]; LIVE.map=[]; LIVE.act=[]; LIVE.blocks=[]; LIVE.sysBlk=[]; LIVE.shown=null; LIVE.blk=-1; LIVE.ok=false;
+    try{
+        const src=playerScoreNotes(state.notes);
+        const mode=SCMODE==='tab'?'tab':'both';
+        const sd=withPlayerSource(()=>pbBuildScore({title:'',voice:'all',ts:playerTs(),mode}),state.notes);
+        LIVE.svgs=sd.svgs; LIVE.lay=sd.lay; LIVE.heads=sd.heads; LIVE.W=sd.W;
+        const pr=[]; src.forEach(n=>{ pr.push([n.t0,(n.beat-1)*8],[n.t1,(n.beat-1+n.duration)*8]); });
+        pr.sort((a,b)=>a[0]-b[0]||a[1]-b[1]);
+        let mu=-1; const m=[]; pr.forEach(([t,u])=>{ u=Math.max(u,mu); mu=u; if(m.length&&m[m.length-1][0]===t) m[m.length-1][1]=u; else m.push([t,u]); });
+        LIVE.map=m; LIVE.ok=sd.svgs.length>0&&sd.lay.length>0&&sd.lay.every(L=>L.page>=0);
+        LIVE.svgs.forEach(svg=>{
+            svg.removeAttribute('width'); svg.removeAttribute('height');
+            svg.setAttribute('preserveAspectRatio','xMidYMid meet');
+            svg.style.cssText='display:block;width:100%;height:100%';
+            svg.querySelectorAll('rect').forEach(r=>{ if(r.getAttribute('fill')==='#fff') r.setAttribute('fill',PAPER_COL); });
+            const mk=()=>{ const r=document.createElementNS(PB_NS,'rect'); r.setAttribute('x','-2000'); r.setAttribute('width','5000'); r.setAttribute('fill',PAPER_COL); return r; };
+            svg._mt=mk(); svg._mb=mk(); svg.append(svg._mt,svg._mb);   // máscaras: escondem o que fica fora do bloco mostrado
+            const ln=document.createElementNS(PB_NS,'line'); ln.setAttribute('stroke',LIVE_COL); ln.setAttribute('stroke-width','2.4'); ln.setAttribute('opacity','.8'); ln.setAttribute('stroke-linecap','round'); ln.style.display='none'; svg.append(ln); svg._cur=ln;
+        });
+        // blocos de 2 a 3 sistemas (linhas) por vez, o que couber na moldura 16:9
+        const BH=LIVE.W*9/16-4, lay=LIVE.lay;
+        for(let i=0;i<lay.length;){
+            let j=i; const top=lay[i].y0-12;
+            while(j+1<lay.length&&lay[j+1].page===lay[i].page&&j+1-i<3&&(lay[j+1].y0+lay[j+1].h-6)-top<=BH) j++;
+            const bot=lay[j].y0+lay[j].h-6;
+            LIVE.blocks.push({page:lay[i].page,top,bot,vy:top-(LIVE.W*9/16-(bot-top))/2});
+            for(let k=i;k<=j;k++) LIVE.sysBlk[k]=LIVE.blocks.length-1;
+            i=j+1;
+        }
+    }catch(e){ console.error(e); LIVE.ok=false; }
+}
+function liveU(t){
+    const m=LIVE.map; if(!m.length) return 0;
+    if(t<=m[0][0]) return m[0][1]; if(t>=m[m.length-1][0]) return m[m.length-1][1];
+    let a=0,b=m.length-1; while(b-a>1){ const c=(a+b)>>1; if(m[c][0]<=t) a=c; else b=c; }
+    const f=(t-m[a][0])/Math.max(1e-6,m[b][0]-m[a][0]); return m[a][1]+(m[b][1]-m[a][1])*f;
+}
+function liveScoreUpdate(){
+    if(!state.midiLoaded||!state.notes.length||VIEW==='violao'||canvasContainer.style.display==='none') return;
+    const paper=livePaper();
+    if(state.style==='acomp'&&state.src&&state.src.an&&state.mode==='violao'){
+        liveMsg('No estilo <b>Acompanhamento</b> o violão toca só as cifras (batida ou dedilhado), por isso não há tablatura para mostrar.<br>Troque o <b>Estilo</b> em ⚙ Opções para ver a tablatura.','acomp'); return;
+    }
+    const sig=[SCMODE,state.mode,state.t,state.style,state.harm?1:0,state.cant?1:0,state.srcBpm,state.srcTs,state.srcPickup,state.srcKey].join('|');
+    if(LIVE.notesRef!==state.notes||LIVE.sig!==sig){ LIVE.notesRef=state.notes; LIVE.sig=sig; LIVE.msg=''; paper.textContent=''; liveBuild(); }
+    if(!LIVE.ok){ liveMsg('Não foi possível montar a partitura deste hino.','erro'); return; }
+    if(LIVE.msg){ LIVE.msg=''; paper.textContent=''; LIVE.shown=null; LIVE.blk=-1; }
+    const u=liveU(state.currentTime), lay=LIVE.lay;
+    let si=lay.findIndex(L=>u<L.u1-1e-6); if(si<0) si=lay.length-1;
+    const L=lay[si], bi=LIVE.sysBlk[si], B=LIVE.blocks[bi], svg=LIVE.svgs[B.page];
+    if(LIVE.shown!==svg){ paper.textContent=''; paper.append(svg); LIVE.shown=svg; LIVE.blk=-1; }
+    if(LIVE.blk!==bi){
+        LIVE.blk=bi; svg.setAttribute('viewBox','0 '+B.vy+' '+LIVE.W+' '+(LIVE.W*9/16));   // sempre 16:9
+        svg._mt.setAttribute('y',B.top-3000); svg._mt.setAttribute('height',3000);
+        svg._mb.setAttribute('y',B.bot); svg._mb.setAttribute('height',3000);
+    }
+    const cols=L.cols; let x=L.xEnd;
+    if(cols.length){
+        if(u<=cols[0].u) x=cols[0].x;
+        else for(let i=0;i<cols.length;i++){ const a=cols[i], bU=i+1<cols.length?cols[i+1].u:L.u1, bX=i+1<cols.length?cols[i+1].x:L.xEnd;
+            if(u<bU){ x=a.x+(bX-a.x)*((u-a.u)/Math.max(1e-6,bU-a.u)); break; } }
+    }
+    const ln=svg._cur; ln.style.display=''; ln.setAttribute('x1',x); ln.setAttribute('x2',x); ln.setAttribute('y1',L.y0+(SCMODE==='tab'?36:30)); ln.setAttribute('y2',L.y0+L.h-18);
+    const act=LIVE.heads.filter(h=>h.u<=u+1e-6&&u<h.e-1e-6);
+    const same=act.length===LIVE.act.length&&act.every((h,i)=>h===LIVE.act[i]);
+    if(!same){
+        LIVE.act.forEach(h=>{ if(h.k==='fill') h.el.setAttribute('fill','#111'); else h.el.setAttribute('stroke','#111'); });
+        act.forEach(h=>{ if(h.k==='fill') h.el.setAttribute('fill',LIVE_COL); else h.el.setAttribute('stroke',LIVE_COL); });
+        LIVE.act=act;
+    }
+}
+
+/* ============================================================================
+   PARTITURA (clave de Sol) — desenhada em SVG, sem bibliotecas externas
+   ========================================================================== */
+const PB_NS='http://www.w3.org/2000/svg';
+function pbEl(parent,tag,attrs,txt){
+    const e=document.createElementNS(PB_NS,tag);
+    for(const k in attrs) e.setAttribute(k,attrs[k]);
+    if(txt!=null) e.textContent=txt;
+    parent.appendChild(e); return e;
+}
+const PB_DURS=[32,24,16,12,8,6,4,3,2,1];               // em fusas (1/32); 1 tempo (semínima) = 8
+const PB_MEASURE={'4/4':32,'3/4':24,'2/4':16,'6/8':24,'6/4':48,'3/2':48,'2/2':32,'9/4':72,'9/8':36,'12/8':48};
+const pbCompound=ts=>ts==='6/8'||ts==='9/8'||ts==='12/8';
+function pbOkPos(p,d,ts){
+    if(pbCompound(ts)){
+        if(d===24) return p%24===0;
+        if(d===16) return false;
+        if(d===12) return p%12===0;
+        if(d===8)  return p%4===0 && (p%12)+8<=12;
+        if(d===6)  return p%6===0;
+        if(d===4)  return p%4===0;
+        if(d===3)  return p%4===0;
+        if(d===2)  return p%2===0;
+        return true;
+    }
+    switch(d){
+        case 32: return p===0;
+        case 24: return p%24===0;
+        case 16: return p%16===0;
+        case 12: return p%16===0;
+        case 8:  return p%8===0;
+        case 6:  return p%8===0;
+        case 4:  return p%4===0;
+        case 3:  return p%4===0;
+        case 2:  return p%2===0;
+        default: return true;
+    }
+}
+function pbSplit(p,len,ts){
+    const out=[];
+    while(len>0){
+        let ok=false;
+        for(const d of PB_DURS){ if(d<=len && pbOkPos(p,d,ts)){ out.push(d); p+=d; len-=d; ok=true; break; } }
+        if(!ok){ out.push(1); p+=1; len-=1; }
+    }
+    return out;
+}
+const PB_WL=[0,null,1,null,2,3,null,4,null,5,null,6];
+function pbSpell(n){ return spellMidi(n.midi,n.accidental||0); }
+const pbFlags=len=>len>=8?0:len>=4?1:len>=2?2:3;
+const pbDotted=len=>len===24||len===12||len===6||len===3;
+
+function pbStaffEvents(list,M,ts,total){
+    const cuts=new Set([0,total]);
+    for(let m=M;m<total;m+=M) cuts.add(m);
+    list.forEach(x=>{ cuts.add(x.u); cuts.add(x.e); });
+    const pts=[...cuts].sort((a,b)=>a-b), ev=[];
+    for(let k=0;k<pts.length-1;k++){
+        const a=pts[k], b=pts[k+1];
+        const act=list.filter(x=>x.u<=a&&x.e>=b);
+        const parts=pbSplit(a%M,b-a,ts);
+        let pos=a;
+        parts.forEach((len,pi)=>{
+            const last=pi===parts.length-1;
+            const notes=act.map(x=>({
+                x, d:x.d, l:x.l, a:x.a, o:x.o, midi:x.midi,
+                tieNext: !last || x.e>b || (x.tied && x.e===b && list.some(y=>y!==x&&y.midi===x.midi&&y.u===b)),
+                tieIn:   pi>0 || x.u<a || (x.tied && list.some(y=>y!==x&&y.midi===x.midi&&y.e===a&&y.tied)),
+                show:null, disp:0
+            })).sort((p,q)=>p.d-q.d);
+            ev.push({pos,len,rest:!notes.length,notes,m:Math.floor(pos/M),pim:pos%M,arts:new Set(act.flatMap(x=>x.arts))});
+            pos+=len;
+        });
+    }
+    return ev;
+}
+
+function pbTabAssign(midis){
+    const cand=midis.map(m=>{ const p=guitarPitch(m), c=[]; for(let s=0;s<6;s++){ const f=p-GUITAR_OPEN[s]; if(f>=0&&f<=19) c.push({s,fret:f}); } if(!c.length) c.push({s:5,fret:19}); return c.sort((x,y)=>x.fret-y.fret); });
+    if(midis.length===1) return [cand[0][0]];
+    let best=null, bestCost=1e9; const cur=[], used=new Set();
+    (function go(i){
+        if(i===cand.length){
+            const fr=cur.filter(c=>c.fret>0).map(c=>c.fret);
+            const span=fr.length?Math.max(...fr)-Math.min(...fr):0;
+            const cost=(span>4?1000:0)+span*20+fr.reduce((a,b)=>a+b,0);
+            if(cost<bestCost){ bestCost=cost; best=cur.slice(); }
+            return;
+        }
+        for(const c of cand[i]){ if(used.has(c.s)) continue; used.add(c.s); cur[i]=c; go(i+1); used.delete(c.s); }
+    })(0);
+    return best||cand.map(c=>c[0]);
+}
+function pbBuildScore(opts){
+    opts=opts||{};
+    const MODE=opts.mode||'both';
+    const ts=opts.ts||document.getElementById('scoreTimeSig').value||'4/4', M=PB_MEASURE[ts]||32, beatU=pbCompound(ts)?12:8;
+    const bpm=parseInt(document.getElementById('scoreBpm').value)||120;
+    const title=(opts.title||'').trim();
+    const vsel=(opts.voice===undefined||opts.voice==='all')?null:Number(opts.voice);
+    const notes=scoreNotes.map((n,i)=>({n,i})).filter(x=>vsel===null||x.n.voice===vsel).map(({n,i})=>{
+        const sp=pbSpell({midi:n.midi+12,accidental:n.accidental}), u=Math.max(0,Math.round((n.beat-1)*8));
+        let e=Math.round((n.beat-1+n.duration)*8); if(e<=u) e=u+1;
+        return {n,i,u,e,l:sp.l,a:sp.a,o:sp.o,d:sp.o*7+sp.l,midi:n.midi,tied:!!n.tied,arts:n.articulations||[]};
+    });
+    if(!notes.length) throw new Error('vazio');
+    const end=Math.max(...notes.map(x=>x.e)), nM=Math.max(1,Math.ceil(end/M)), total=nM*M;
+    const SP=8, W=840, H=1188, MX=52;
+    const staves=[{clef:'treble',base:30,mid:34,ev:pbStaffEvents(notes,M,ts,total)}];   // trompete: só clave de Sol (nota escrita)
+
+    staves.forEach(st=>{
+        // 8va / 8vb: notas muito acima ou muito abaixo da pauta são escritas uma oitava mais perto, com a indicação de oitava (a tablatura não muda)
+        if(opts.o8!==false&&st.clef==='treble'&&MODE!=='tab'){
+            const dirOf=(ev,loose)=>{ const hi=ev.notes[ev.notes.length-1].d, lo=ev.notes[0].d;
+                if(hi>=st.base+(loose?8:12)&&lo-7>=st.base-4) return -7;      // 8va (escreve abaixo)
+                if(lo<=st.base-(loose?2:4)&&hi+7<=st.base+12) return 7;      // 8vb (escreve acima)
+                return 0; };
+            const mv=(ev,sh)=>{ ev.o8=sh<0?'va':'vb'; ev.notes.forEach(h=>{ h.d+=sh; h.o+=sh/7; }); };
+            st.ev.forEach(ev=>{ if(!ev.rest&&ev.notes.length){ const sh=dirOf(ev,false); if(sh) mv(ev,sh); } });
+            const ne=st.ev.filter(e=>!e.rest&&e.notes.length);   // evento isolado entre dois trechos iguais sobe/desce junto
+            for(let i=1;i<ne.length-1;i++){ const ev=ne[i]; if(ev.o8||!ne[i-1].o8||ne[i-1].o8!==ne[i+1].o8) continue; const sh=dirOf(ev,true); if(sh&&(sh<0?'va':'vb')===ne[i-1].o8) mv(ev,sh); }
+        }
+        let state={}, lastM=-1;
+        st.ev.forEach(ev=>{
+            if(ev.m!==lastM){ state={}; lastM=ev.m; }
+            if(ev.rest) return;
+            ev.notes.forEach(h=>{
+                const key=h.l+'/'+h.o, cur=(key in state)?state[key]:KSIG[h.l];
+                if(h.tieIn){ h.show=null; state[key]=h.a; return; }
+                if(cur!==h.a){ h.show=h.a; state[key]=h.a; }
+            });
+        });
+        const groups=[]; let g=null;
+        st.ev.forEach(ev=>{
+            const ok=!ev.rest && ev.len<=6;
+            if(ok && g && g.m===ev.m && g.beat===Math.floor(ev.pim/beatU) && g.endPos===ev.pos){ g.list.push(ev); g.endPos=ev.pos+ev.len; }
+            else { if(g&&g.list.length>1) groups.push(g); g=ok?{m:ev.m,beat:Math.floor(ev.pim/beatU),endPos:ev.pos+ev.len,list:[ev]}:null; }
+        });
+        if(g&&g.list.length>1) groups.push(g);
+        groups.forEach(gr=>{
+            let lo=1e9,hi=-1e9; gr.list.forEach(ev=>ev.notes.forEach(h=>{ lo=Math.min(lo,h.d); hi=Math.max(hi,h.d); }));
+            const up=(st.mid-lo)>(hi-st.mid);
+            gr.list.forEach(ev=>{ ev.up=up; ev.beam=gr; });
+        });
+        st.ev.forEach(ev=>{
+            if(ev.rest) return;
+            if(ev.up===undefined){
+                const lo=ev.notes[0].d, hi=ev.notes[ev.notes.length-1].d;
+                ev.up=(st.mid-lo)>(hi-st.mid);
+            }
+            const n=ev.notes;
+            if(ev.up){ for(let i=1;i<n.length;i++) if(n[i].d-n[i-1].d===1 && !n[i-1].disp) n[i].disp=1; }
+            else { for(let i=n.length-2;i>=0;i--) if(n[i+1].d-n[i].d===1 && !n[i+1].disp) n[i].disp=-1; }
+            const lastD=[]; ev.accCols=0;
+            [...n].reverse().forEach(h=>{
+                if(h.show===null) return;
+                let c=0; while(lastD[c]!==undefined && lastD[c]-h.d<6) c++;
+                lastD[c]=h.d; h.accCol=c; ev.accCols=Math.max(ev.accCols,c+1);
+            });
+            ev.leftExtra=ev.accCols*10+(ev.accCols?2:0)+(n.some(h=>h.disp<0)?10:0);
+        });
+    });
+
+    const measures=[];
+    for(let m=0;m<nM;m++){
+        const posSet=new Set();
+        staves.forEach(st=>st.ev.forEach(ev=>{ if(ev.m===m) posSet.add(ev.pos); }));
+        const ps=[...posSet].sort((a,b)=>a-b);
+        const cols=ps.map((p,i)=>{
+            const nxt=i<ps.length-1?ps[i+1]:(m+1)*M, gap=nxt-p;
+            let left=0, dots=0;
+            staves.forEach(st=>st.ev.forEach(ev=>{ if(ev.pos===p&&ev.m===m){ if(!ev.rest) left=Math.max(left,ev.leftExtra); if(pbDotted(ev.len)) dots=6; } }));
+            return {pos:p,gap,left,base:14+5.5*Math.sqrt(gap)+dots};
+        });
+        measures.push({m,cols});
+    }
+    const clefW=34, tsW=22, AWfull=W-2*MX, ksW=KEY.n?KEY.n*9+6:0;
+    const systems=[]; let cur=null;
+    const mWidth=ms=>8+ms.cols.reduce((s,c)=>s+c.left+c.base,0)+6;
+    measures.forEach(ms=>{
+        const w=mWidth(ms);
+        if(!cur){ cur={ms:[ms],w,first:true}; systems.push(cur); }
+        else {
+            const av=AWfull-clefW-ksW-(cur.first?tsW:0);
+            if(cur.w+w<=av){ cur.ms.push(ms); cur.w+=w; }
+            else { cur={ms:[ms],w,first:false}; systems.push(cur); }
+        }
+    });
+    const TSP=9, TABH=5*TSP;
+    const gA=gAssignTimeline(notes.map(n=>({key:n,u:n.u,e:n.e,midi:n.midi,fix:(n.n.ts!=null&&n.n.tf!=null)?{s:n.n.ts,fret:n.n.tf}:undefined})),0);
+    const atkList=staves[0].ev.filter(ev=>!ev.rest&&ev.notes.some(h=>!h.tieIn));
+    systems.forEach(sys=>{
+        const evs=staves[0].ev.filter(ev=>sys.ms.some(ms=>ms.m===ev.m));
+        let minD=1e9; evs.forEach(ev=>{ if(!ev.rest) ev.notes.forEach(h=>{ minD=Math.min(minD,h.d); }); });
+        const low=minD<1e9?Math.max(0,(staves[0].base-minD))*SP/2:0;
+        sys.nExtra=Math.max(30,low+30,evs.some(ev=>ev.o8==='vb')?low+44:0);
+        sys.h = MODE==='nota' ? 44+4*SP+34+22 : MODE==='tab' ? 44+TABH+52 : 44+4*SP+sys.nExtra+TABH+34;
+    });
+    const svgs=[]; let page=null, y=0, pageNo=0;
+    const newPage=()=>{
+        pageNo++;
+        const s=document.createElementNS(PB_NS,'svg');
+        s.setAttribute('viewBox','0 0 '+W+' '+H); s.setAttribute('width',W); s.setAttribute('height',H);
+        pbEl(s,'rect',{x:0,y:0,width:W,height:H,fill:'#fff'});
+        svgs.push(s); page=s;
+        if(pageNo===1){
+            pbEl(page,'text',{x:W/2,y:70,'text-anchor':'middle','font-family':'Georgia,Times New Roman,serif','font-size':28,'font-weight':'bold',fill:'#111'},title||'Sem título');
+            pbEl(page,'text',{x:MX,y:96,'font-family':'Georgia,serif','font-size':13,'font-style':'italic',fill:'#555'},(MODE==='tab'?'Violão — tablatura':MODE==='nota'?'Violão (escrito uma oitava acima do som)':'Violão — tablatura e notação (escrita uma oitava acima do som)'));
+            pbEl(page,'ellipse',{cx:MX+5,cy:120,rx:4.6,ry:3.4,transform:'rotate(-20 '+(MX+5)+' 120)',fill:'#111'});
+            pbEl(page,'line',{x1:MX+9.2,y1:119,x2:MX+9.2,y2:105,stroke:'#111','stroke-width':1.3});
+            pbEl(page,'text',{x:MX+18,y:120,'font-family':'Arial,Helvetica,sans-serif','font-size':14,fill:'#111'},'= '+bpm);
+            y=140;
+        } else y=60;
+    };
+    newPage();
+    const place=[], heads=[];
+    systems.forEach(sys=>{
+        if(y+sys.h>H-56) newPage();
+        place.push({sys,page,y0:y,pageNo});
+        y+=sys.h;
+    });
+    const total_pages=svgs.length;
+    svgs.forEach((s,i)=>pbEl(s,'text',{x:W/2,y:H-26,'text-anchor':'middle','font-family':'Arial,Helvetica,sans-serif','font-size':11,fill:'#888'},(i+1)+' / '+total_pages));
+    pbEl(svgs[0],'text',{x:W-MX,y:120,'text-anchor':'end','font-family':'Arial,Helvetica,sans-serif','font-size':11,'fill':'#888'},ts+'  ·  DigitaHinos Violao');
+
+    const INK='#111', HRX=SP*0.66, HRY=SP*0.46;
+    const pending=staves.map(()=>new Map()), lay=[];
+    const stepY=(st,top,d)=>top+4*SP-(d-st.base)*SP/2;
+    place.forEach(({sys,page:pgReal,y0},si)=>{
+        const pg=MODE==='tab'?document.createElementNS(PB_NS,'g'):pgReal;
+        const tops=staves.map((_,k)=>y0+44+k*(8*SP));
+        const left=MX, firstTs=sys.first;
+        const xStart=left+clefW+ksW+(firstTs?tsW:0);
+        const AW=AWfull-clefW-ksW-(firstTs?tsW:0);
+        const pads=sys.ms.length*14;
+        const fixed=sys.ms.reduce((s,ms)=>s+ms.cols.reduce((a,c)=>a+c.left,0),0);
+        const flex=sys.ms.reduce((s,ms)=>s+ms.cols.reduce((a,c)=>a+c.base,0),0);
+        let f=(AW-pads-fixed)/flex;
+        const isLast=si===place.length-1;
+        if(isLast && f>1.5) f=1.5;
+        f=Math.max(.55,f);
+        let x=xStart; const colX=new Map(), barX=[];
+        sys.ms.forEach(ms=>{
+            x+=8;
+            ms.cols.forEach(c=>{ colX.set(ms.m+':'+c.pos,x+c.left+5); x+=c.left+c.base*f; });
+            x+=6; barX.push(x);
+        });
+        const xEnd=x;
+        lay.push({page:svgs.indexOf(pgReal),y0,h:sys.h,xStart,xEnd,u0:sys.ms[0].m*M,u1:(sys.ms[sys.ms.length-1].m+1)*M,
+            cols:sys.ms.flatMap(ms=>ms.cols.map(c=>({u:c.pos,x:colX.get(ms.m+':'+c.pos)})))});
+        staves.forEach((st,k)=>{
+            for(let i=0;i<5;i++) pbEl(pg,'line',{x1:left,y1:tops[k]+i*SP,x2:xEnd,y2:tops[k]+i*SP,stroke:INK,'stroke-width':1});
+        });
+        const bottomY=tops[staves.length-1]+4*SP;
+        pbEl(pg,'line',{x1:left,y1:tops[0],x2:left,y2:bottomY,stroke:INK,'stroke-width':1.6});
+        if(staves.length>1) pbEl(pg,'path',{d:`M${left-3},${tops[0]} Q${left-9},${(tops[0]+bottomY)/2} ${left-3},${bottomY}`,fill:'none',stroke:INK,'stroke-width':2.4});
+        staves.forEach((st,k)=>{
+            if(st.clef==='alto') pbAltoClef(pg,left+7,tops[k]+2*SP,SP); else if(st.clef==='bass') pbBassClef(pg,left+7,tops[k]+SP,SP); else pbTrebleClef(pg,left+8,tops[k]+3*SP,SP);
+            if(KEY.n){
+                const PS=(KEY.flat?[4,7,3,6,2,5,1]:[8,5,9,6,3,7,4]).map(q=>q-(st.clef==='alto'?1:st.clef==='bass'?2:0));
+                for(let q=0;q<KEY.n;q++) pbAccidental(pg,left+clefW+6+q*9,stepY(st,tops[k],st.base+PS[q]),KEY.flat?-1:1,SP,INK);
+            }
+            if(firstTs){
+                const [a,b]=ts.split('/'), tx=left+clefW+ksW+8;
+                pbEl(pg,'text',{x:tx,y:tops[k]+2*SP-1,'text-anchor':'middle','font-family':'Georgia,serif','font-size':SP*2.7,'font-weight':'bold',fill:INK},a);
+                pbEl(pg,'text',{x:tx,y:tops[k]+4*SP-1,'text-anchor':'middle','font-family':'Georgia,serif','font-size':SP*2.7,'font-weight':'bold',fill:INK},b);
+            }
+        });
+        pbEl(pg,'text',{x:left+2,y:tops[0]-10,'font-family':'Arial,sans-serif','font-size':10,'font-style':'italic',fill:'#555'},String(sys.ms[0].m+1));
+        barX.forEach((bx,i)=>{
+            const lastBar=isLast&&i===barX.length-1;
+            pbEl(pg,'line',{x1:bx,y1:tops[0],x2:bx,y2:bottomY,stroke:INK,'stroke-width':1.1});
+            if(lastBar) pbEl(pg,'line',{x1:bx+4,y1:tops[0],x2:bx+4,y2:bottomY,stroke:INK,'stroke-width':4});
+        });
+        staves.forEach((st,k)=>{
+            const top=tops[k], yOf=d=>stepY(st,top,d), midY=top+2*SP;
+            const evs=st.ev.filter(ev=>sys.ms.some(ms=>ms.m===ev.m));
+            const X=ev=>colX.get(ev.m+':'+ev.pos);
+            { // indicação 8va/8vb com linha pontilhada
+                const runs=[]; let cr=null;
+                evs.forEach(ev=>{
+                    if(ev.rest) return;
+                    if(ev.o8){
+                        const va=ev.o8==='va', yy0=va?yOf(ev.notes[ev.notes.length-1].d):yOf(ev.notes[0].d);
+                        if(cr&&cr.t!==ev.o8){ runs.push(cr); cr=null; }
+                        if(!cr){ cr={a:ev,b:ev,y:yy0,t:ev.o8}; } else { cr.b=ev; cr.y=va?Math.min(cr.y,yy0):Math.max(cr.y,yy0); }
+                    } else if(cr){ runs.push(cr); cr=null; }
+                });
+                if(cr) runs.push(cr);
+                runs.forEach(r=>{
+                    const va=r.t==='va';
+                    const x1=X(r.a)-HRX*1.6, x2=X(r.b)+HRX*1.9, yy=va?Math.min(top-SP*1.6,r.y-SP*2.2):Math.max(top+4*SP+SP*2.2,r.y+SP*2.2);
+                    const t=pbEl(pg,'text',{x:x1,y:yy+4,'font-family':'Georgia,Times New Roman,serif','font-size':SP*1.7,'font-style':'italic',fill:INK});
+                    t.textContent='8';
+                    const ts2=pbEl(pg,'tspan',{'font-size':SP*1.15,dy:-SP*.15}); ts2.textContent=va?'va':'vb'; t.appendChild(ts2);
+                    pbEl(pg,'line',{x1:x1+SP*3.1,y1:yy,x2:x2,y2:yy,stroke:INK,'stroke-width':1,'stroke-dasharray':'1.8 2.4'});
+                    pbEl(pg,'line',{x1:x2,y1:yy,x2:x2,y2:va?yy+SP*.9:yy-SP*.9,stroke:INK,'stroke-width':1});
+                });
+            }
+            const doneGroups=new Set();
+            evs.forEach(ev=>{
+                if(ev.rest){ pbRest(pg,ev,X(ev),top,SP,M,INK); return; }
+                const cx=X(ev), n=ev.notes;
+                const lows=n[0].d, highs=n[n.length-1].d;
+                for(let d=st.base-2; d>=lows; d-=2) pbEl(pg,'line',{x1:cx-HRX*1.7,y1:yOf(d),x2:cx+HRX*1.7+(n.some(h=>h.disp>0)?HRX*2:0),y2:yOf(d),stroke:INK,'stroke-width':1.2});
+                for(let d=st.base+10; d<=highs; d+=2) pbEl(pg,'line',{x1:cx-HRX*1.7,y1:yOf(d),x2:cx+HRX*1.7+(n.some(h=>h.disp>0)?HRX*2:0),y2:yOf(d),stroke:INK,'stroke-width':1.2});
+                n.forEach(h=>{
+                    const hx=cx+h.disp*HRX*2, hy=yOf(h.d); h.hx=hx; h.hy=hy;
+                    let hel, hk='fill';
+                    if(ev.len>=32){
+                        hel=pbEl(pg,'ellipse',{cx:hx,cy:hy,rx:HRX*1.15,ry:HRY*1.05,fill:INK});
+                        pbEl(pg,'ellipse',{cx:hx,cy:hy,rx:HRX*.55,ry:HRY*.95,fill:'#fff',transform:`rotate(-55 ${hx} ${hy})`});
+                    } else if(ev.len<16){
+                        hel=pbEl(pg,'ellipse',{cx:hx,cy:hy,rx:HRX,ry:HRY,fill:INK,transform:`rotate(-20 ${hx} ${hy})`});
+                    } else {
+                        hel=pbEl(pg,'ellipse',{cx:hx,cy:hy,rx:HRX*.95,ry:HRY*.9,fill:'none',stroke:INK,'stroke-width':1.6,transform:`rotate(-22 ${hx} ${hy})`}); hk='stroke';
+                    }
+                    heads.push({el:hel,k:hk,u:ev.pos,e:ev.pos+ev.len,voice:h.x&&h.x.n?h.x.n.voice:0});
+                    if(pbDotted(ev.len)){
+                        const onLine=((h.d-st.base)%2+2)%2===0;
+                        pbEl(pg,'circle',{cx:cx+HRX*2+(n.some(q=>q.disp>0)?HRX*2:0)+1.5,cy:hy-(onLine?SP/2:0),r:1.5,fill:INK});
+                    }
+                    if(h.show!==null) pbAccidental(pg,cx-HRX-6-h.accCol*10-(h.disp<0?HRX*2:0),hy,h.show,SP,INK);
+                });
+                if(ev.len<32){
+                    const yTop=yOf(highs), yBot=yOf(lows);
+                    ev.sx=ev.up?cx+HRX-.5:cx-HRX+.5; ev.yTop=yTop; ev.yBot=yBot;
+                    if(!ev.beam){
+                        const tip=ev.up?Math.min(yTop-3.5*SP,midY):Math.max(yBot+3.5*SP,midY);
+                        pbEl(pg,'line',{x1:ev.sx,y1:ev.up?yBot:yTop,x2:ev.sx,y2:tip,stroke:INK,'stroke-width':1.2});
+                        const fl=pbFlags(ev.len);
+                        for(let q=0;q<fl;q++){
+                            const dir=ev.up?1:-1, y0f=tip+dir*q*SP*.85, sg=ev.up?1:-1;
+                            pbEl(pg,'path',{d:`M${ev.sx},${y0f} C${ev.sx+1},${y0f+sg*SP*.9} ${ev.sx+SP*1.45},${y0f+sg*SP*1.0} ${ev.sx+SP*.95},${y0f+sg*SP*2.6} C${ev.sx+SP*1.15},${y0f+sg*SP*1.5} ${ev.sx+SP*.3},${y0f+sg*SP*1.15} ${ev.sx},${y0f+sg*SP*1.45} Z`,fill:INK});
+                        }
+                    }
+                }
+                let ay=ev.up?yOf(lows)+SP*1.5:yOf(highs)-SP*1.5;
+                if(ev.arts.has('staccato')||ev.arts.has('staccatissimo')){ pbEl(pg,'circle',{cx:cx,cy:ay,r:1.5,fill:INK}); ay+=(ev.up?1:-1)*SP; }
+                if(ev.arts.has('tenuto')){ pbEl(pg,'line',{x1:cx-HRX,y1:ay,x2:cx+HRX,y2:ay,stroke:INK,'stroke-width':1.6}); ay+=(ev.up?1:-1)*SP*.8; }
+                if(ev.arts.has('accent')){ pbEl(pg,'path',{d:`M${cx-HRX},${ay-SP*.45} L${cx+HRX},${ay} L${cx-HRX},${ay+SP*.45}`,fill:'none',stroke:INK,'stroke-width':1.4}); ay+=(ev.up?1:-1)*SP; }
+                if(ev.arts.has('marcato')){ pbEl(pg,'path',{d:`M${cx-HRX*.8},${ay+SP*.5} L${cx},${ay-SP*.5} L${cx+HRX*.8},${ay+SP*.5}`,fill:'none',stroke:INK,'stroke-width':1.5}); }
+                if(ev.arts.has('fermata')){
+                    const fy=Math.min(top-SP*1.2, yOf(highs)-SP*2);
+                    pbEl(pg,'path',{d:`M${cx-SP*1.3},${fy+SP*.9} C${cx-SP*1.2},${fy-SP*.9} ${cx+SP*1.2},${fy-SP*.9} ${cx+SP*1.3},${fy+SP*.9}`,fill:'none',stroke:INK,'stroke-width':1.6});
+                    pbEl(pg,'circle',{cx:cx,cy:fy+SP*.4,r:1.6,fill:INK});
+                }
+                n.forEach(h=>{
+                    const pm=pending[k];
+                    if(h.tieIn && pm.has(h.midi)){
+                        const from=pm.get(h.midi); pm.delete(h.midi);
+                        if(from.sys===si) pbTie(pg,from.hx+HRX,from.hy,h.hx-HRX,h.hy,from.dir,SP,INK);
+                        else {
+                            pbTie(pg,xStart-6,h.hy,h.hx-HRX,h.hy,from.dir,SP,INK);
+                            if(from.pg) pbTie(from.pg,from.hx+HRX,from.hy,from.xEnd,from.hy,from.dir,SP,INK);
+                        }
+                    }
+                    if(h.tieNext){
+                        const dir=n.length>1?(h.d>=(n[0].d+n[n.length-1].d)/2?-1:1):(ev.up?1:-1);
+                        pm.set(h.midi,{hx:h.hx,hy:h.hy,sys:si,dir,pg,xEnd:xEnd-2});
+                    }
+                });
+            });
+            evs.forEach(ev=>{
+                if(!ev.beam||doneGroups.has(ev.beam)) return;
+                doneGroups.add(ev.beam);
+                const L=ev.beam.list.filter(e=>evs.includes(e));
+                if(L.length<2) return;
+                const up=L[0].up, s=up?1:-1, first=L[0], last=L[L.length-1];
+                const tipOf=e=>up?Math.min(e.yTop-3.5*SP,midY):Math.max(e.yBot+3.5*SP,midY);
+                const x1=first.sx, x2=last.sx;
+                let y1=tipOf(first), y2=tipOf(last);
+                const dy=Math.max(-SP*1.5,Math.min(SP*1.5,(y2-y1)*.5)); y2=y1+dy;
+                const lineY=x=>y1+(y2-y1)*(x-x1)/Math.max(1,x2-x1);
+                let shift=0;
+                L.forEach(e=>{
+                    const need=up?(e.yTop-3*SP):(e.yBot+3*SP), have=lineY(e.sx);
+                    if(up&&have>need) shift=Math.min(shift,need-have);
+                    if(!up&&have<need) shift=Math.max(shift,need-have);
+                });
+                y1+=shift; y2+=shift;
+                const T=SP*.55, G=SP*.28;
+                L.forEach(e=>{ pbEl(pg,'line',{x1:e.sx,y1:up?e.yBot:e.yTop,x2:e.sx,y2:lineY(e.sx),stroke:INK,'stroke-width':1.2}); });
+                for(let lv=0;lv<3;lv++){
+                    let i=0;
+                    while(i<L.length){
+                        if(pbFlags(L[i].len)>lv){
+                            let j=i; while(j+1<L.length&&pbFlags(L[j+1].len)>lv) j++;
+                            const off=lv*(T+G)*s;
+                            let xa,xb;
+                            if(j>i){ xa=L[i].sx; xb=L[j].sx; }
+                            else { const e=L[i]; xa=(i===L.length-1)?e.sx-SP*.9:e.sx; xb=(i===L.length-1)?e.sx:e.sx+SP*.9; }
+                            const ya=lineY(xa)+off, yb=lineY(xb)+off;
+                            pbEl(pg,'polygon',{points:`${xa-.6},${ya} ${xb+.6},${yb} ${xb+.6},${yb+s*T} ${xa-.6},${ya+s*T}`,fill:INK});
+                            i=j+1;
+                        } else i++;
+                    }
+                }
+            });
+        });
+        if(MODE!=='nota'){
+            const ttop=MODE==='tab'?y0+44:tops[0]+4*SP+sys.nExtra, tb=ttop+TABH;
+            const sY=si_=>ttop+(5-si_)*TSP, INKT='#111';
+            for(let i=0;i<6;i++) pbEl(pgReal,'line',{x1:left,y1:ttop+i*TSP,x2:xEnd,y2:ttop+i*TSP,stroke:INKT,'stroke-width':1});
+            pbEl(pgReal,'line',{x1:left,y1:ttop,x2:left,y2:tb,stroke:INKT,'stroke-width':1.6});
+            ['T','A','B'].forEach((c,i)=>pbEl(pgReal,'text',{x:left+16,y:ttop+TSP*(1.75+i*1.5)+4,'text-anchor':'middle','font-family':'Arial,Helvetica,sans-serif','font-size':13,'font-weight':'bold',fill:INKT},c));
+            if(MODE==='tab') pbEl(pgReal,'text',{x:left+2,y:ttop-10,'font-family':'Arial,sans-serif','font-size':10,'font-style':'italic',fill:'#555'},String(sys.ms[0].m+1));
+            barX.forEach((bx,i)=>{
+                pbEl(pgReal,'line',{x1:bx,y1:ttop,x2:bx,y2:tb,stroke:INKT,'stroke-width':1.1});
+                if(isLast&&i===barX.length-1) pbEl(pgReal,'line',{x1:bx+4,y1:ttop,x2:bx+4,y2:tb,stroke:INKT,'stroke-width':4});
+            });
+            const evsT=staves[0].ev.filter(ev=>sys.ms.some(ms=>ms.m===ev.m));
+            evsT.forEach(ev=>{
+                const cx=colX.get(ev.m+':'+ev.pos); if(cx==null) return;
+                if(ev.rest) return;
+                const atk=ev.notes.filter(h=>!h.tieIn); if(!atk.length) return;
+                atk.forEach((h,i)=>{
+                    const a=gA.get(h.x)||gCands(h.midi)[0], y=sY(a.s), t=String(a.fret), w=t.length*6.2+3;
+                    pbEl(pgReal,'rect',{x:cx-w/2,y:y-5.2,width:w,height:10.4,fill:'#fff'});
+                    const tel=pbEl(pgReal,'text',{x:cx,y:y+3.9,'text-anchor':'middle','font-family':'Arial,Helvetica,sans-serif','font-size':11,'font-weight':'bold',fill:INKT},t);
+                    heads.push({el:tel,k:'fill',u:ev.pos,e:ev.pos+ev.len,voice:0});
+                });
+                if(MODE==='tab'){
+                    const ai=atkList.indexOf(ev), nx_=ai>=0&&ai<atkList.length-1?atkList[ai+1].pos:total, mEnd=(ev.m+1)*M;
+                    const gap=Math.max(1,Math.min(nx_,mEnd)-ev.pos); let len=1; for(const d of PB_DURS){ if(d<=gap){ len=d; break; } }
+                    const by=tb+10;
+                    if(len<32) pbEl(pgReal,'line',{x1:cx,y1:by,x2:cx,y2:by+24,stroke:INKT,'stroke-width':1.2});
+                    if(len>=16) pbEl(pgReal,'circle',{cx:cx,cy:by+25,r:2.6,fill:'#fff',stroke:INKT,'stroke-width':1.2});
+                    else pbEl(pgReal,'circle',{cx:cx,cy:by+25,r:2.6,fill:INKT});
+                    const fl=len>=8?0:len>=4?1:len>=2?2:3;
+                    for(let f=0;f<fl;f++) pbEl(pgReal,'line',{x1:cx,y1:by+f*4,x2:cx+5,y2:by+f*4+4,stroke:INKT,'stroke-width':1.4});
+                    if(pbDotted(len)) pbEl(pgReal,'circle',{cx:cx+7,cy:by+25,r:1.4,fill:INKT});
+                }
+            });
+        }
+    });
+    return {svgs,W,H,heads,lay,M};
+}
+
+function pbAccidental(g,x,y,a,SP,ink){
+    if(a===1){
+        pbEl(g,'line',{x1:x-2,y1:y-SP*1.3,x2:x-2,y2:y+SP*1.5,stroke:ink,'stroke-width':1.1});
+        pbEl(g,'line',{x1:x+2.2,y1:y-SP*1.5,x2:x+2.2,y2:y+SP*1.3,stroke:ink,'stroke-width':1.1});
+        pbEl(g,'line',{x1:x-4,y1:y-SP*.2,x2:x+4.4,y2:y-SP*.7,stroke:ink,'stroke-width':2.2});
+        pbEl(g,'line',{x1:x-4,y1:y+SP*.8,x2:x+4.4,y2:y+SP*.3,stroke:ink,'stroke-width':2.2});
+    } else if(a===-1){
+        pbEl(g,'line',{x1:x-2.5,y1:y-SP*2,x2:x-2.5,y2:y+SP*.5,stroke:ink,'stroke-width':1.3});
+        pbEl(g,'path',{d:`M${x-2.5},${y+SP*.5} C${x+1},${y+SP*.1} ${x+5},${y-SP*.6} ${x+2.5},${y-SP*1.1} C${x+1},${y-SP*1.4} ${x-1.5},${y-SP*1.1} ${x-2.5},${y-SP*.3}`,fill:'none',stroke:ink,'stroke-width':1.6});
+    } else if(a===0){
+        pbEl(g,'line',{x1:x-2.5,y1:y-SP*1.6,x2:x-2.5,y2:y+SP*.8,stroke:ink,'stroke-width':1.1});
+        pbEl(g,'line',{x1:x+2.5,y1:y-SP*.8,x2:x+2.5,y2:y+SP*1.6,stroke:ink,'stroke-width':1.1});
+        pbEl(g,'line',{x1:x-2.5,y1:y-SP*.1,x2:x+2.5,y2:y-SP*.5,stroke:ink,'stroke-width':2});
+        pbEl(g,'line',{x1:x-2.5,y1:y+SP*.6,x2:x+2.5,y2:y+SP*.2,stroke:ink,'stroke-width':2});
+    } else if(a===2){
+        const r=SP*.45;
+        pbEl(g,'path',{d:`M${x-r},${y-r} L${x+r},${y+r} M${x+r},${y-r} L${x-r},${y+r}`,stroke:ink,'stroke-width':2.2,fill:'none'});
+    } else { pbAccidental(g,x-4,y,-1,SP,ink); pbAccidental(g,x+3,y,-1,SP,ink); }
+}
+function pbTie(g,x1,y1,x2,y2,dir,SP,ink){
+    const ys=y1+dir*SP*.55, ye=y2+dir*SP*.55, ym=(ys+ye)/2, mx=(x1+x2)/2;
+    const H=Math.min(SP*1.4,Math.max(SP*.6,(x2-x1)*.12)), t=SP*.34;
+    pbEl(g,'path',{d:`M${x1},${ys} Q${mx},${ym+dir*2*H} ${x2},${ye} Q${mx},${ym+dir*2*(H-t)} ${x1},${ys} Z`,fill:ink});
+}
+function pbRest(g,ev,cx,top,SP,M,ink){
+    const mid=top+2*SP, len=ev.len;
+    if((len===M&&ev.pim===0)||len===32){ const w=SP*1.5; pbEl(g,'rect',{x:cx-w/2+(len===M?8:0),y:top+SP,width:w,height:SP*.5,fill:ink}); return; }
+    if(len===24||len===16){
+        const w=SP*1.5; pbEl(g,'rect',{x:cx-w/2,y:mid-SP*.5,width:w,height:SP*.5,fill:ink});
+        if(len===24) pbEl(g,'circle',{cx:cx+w/2+4,cy:mid-SP*.9,r:1.5,fill:ink});
+        return;
+    }
+    if(len===8||len===12){
+        pbEl(g,'path',{d:`M${cx-SP*.55},${mid-SP*1.5} L${cx+SP*.55},${mid-SP*.45} L${cx-SP*.5},${mid+SP*.55} C${cx+SP*.9},${mid+SP*.45} ${cx+SP*.9},${mid+SP*1.4} ${cx-SP*.3},${mid+SP*1.6} C${cx+SP*.5},${mid+SP*1.2} ${cx-SP*.3},${mid+SP*.9} ${cx-SP*.6},${mid+SP*1.1}`,fill:'none',stroke:ink,'stroke-width':1.9,'stroke-linejoin':'round','stroke-linecap':'round'});
+        if(len===12) pbEl(g,'circle',{cx:cx+SP*1.2,cy:mid-SP*.5,r:1.5,fill:ink});
+        return;
+    }
+    const fl=pbFlags(len), y0=mid-SP*.6, bot=y0+SP*(.9+fl*.9);
+    pbEl(g,'line',{x1:cx+SP*.55,y1:y0-SP*.6,x2:cx-SP*.35,y2:bot,stroke:ink,'stroke-width':1.5,'stroke-linecap':'round'});
+    for(let q=0;q<fl;q++){
+        const yy=y0+q*SP*.9, xx=cx+SP*.55-(yy-(y0-SP*.6))*(SP*.9/(bot-(y0-SP*.6)));
+        pbEl(g,'circle',{cx:xx-SP*.75,cy:yy,r:SP*.28,fill:ink});
+        pbEl(g,'path',{d:`M${xx-SP*.6},${yy+SP*.1} Q${xx},${yy+SP*.3} ${xx+SP*.35},${yy-SP*.45}`,fill:'none',stroke:ink,'stroke-width':1.4,'stroke-linecap':'round'});
+    }
+    if(pbDotted(len)) pbEl(g,'circle',{cx:cx+SP*1.2,cy:mid-SP*.3,r:1.5,fill:ink});
+}
+// clave de Dó (3ª linha) — usada pela viola; o ponto central fica sobre a linha do meio (yM)
+function pbAltoClef(g,x,yM,SP){
+    const u=SP, X=a=>(x+a*u).toFixed(2), Y=b=>(yM+b*u).toFixed(2);
+    pbEl(g,'rect',{x:x,y:yM-2*u,width:.62*u,height:4*u,fill:'#111'});
+    pbEl(g,'line',{x1:x+1.02*u,y1:yM-2*u,x2:x+1.02*u,y2:yM+2*u,stroke:'#111','stroke-width':.16*u});
+    pbEl(g,'path',{d:`M${X(1.5)},${Y(-2.0)} C${X(3.5)},${Y(-2.35)} ${X(3.6)},${Y(-.35)} ${X(1.7)},${Y(-.1)} `+
+                     `M${X(1.5)},${Y(2.0)} C${X(3.5)},${Y(2.35)} ${X(3.6)},${Y(.35)} ${X(1.7)},${Y(.1)} `+
+                     `M${X(1.7)},${Y(-.1)} L${X(1.7)},${Y(.1)}`,
+        fill:'none',stroke:'#111','stroke-width':1.7,'stroke-linecap':'round','stroke-linejoin':'round'});
+    pbEl(g,'circle',{cx:x+1.5*u,cy:yM-2*u,r:.3*u,fill:'#111'});
+    pbEl(g,'circle',{cx:x+1.5*u,cy:yM+2*u,r:.3*u,fill:'#111'});
+}
+// clave de Fá (4ª linha) — usada pelo violoncelo; yF = linha do Fá
+function pbBassClef(g,x,yF,SP){
+    const u=SP, P=(a,b)=>`${(x+a*u).toFixed(2)},${(yF+b*u).toFixed(2)}`;
+    pbEl(g,'path',{d:`M${P(.4,0)} C${P(.4,-1.3)} ${P(2.3,-1.2)} ${P(2.4,.5)} C${P(2.45,1.7)} ${P(1.3,2.5)} ${P(-.2,3.1)}`,fill:'none',stroke:'#111','stroke-width':1.7,'stroke-linecap':'round'});
+    pbEl(g,'circle',{cx:x+.4*u,cy:yF,r:.5*u,fill:'#111'});
+    pbEl(g,'circle',{cx:x+3.1*u,cy:yF-.5*u,r:.26*u,fill:'#111'});
+    pbEl(g,'circle',{cx:x+3.1*u,cy:yF+.5*u,r:.26*u,fill:'#111'});
+}
+function pbTrebleClef(g,x,yG,SP){
+    const u=SP, P=(a,b)=>`${(x+a*u).toFixed(2)},${(yG+b*u).toFixed(2)}`;
+    pbEl(g,'path',{d:
+        `M${P(.55,3.1)} C${P(-.6,3.9)} ${P(-1.4,2.9)} ${P(-.6,2.2)} C${P(.1,1.7)} ${P(1.0,2.2)} ${P(.95,2.9)} `+
+        `L${P(1.05,-4.2)} C${P(1.15,-5.0)} ${P(1.7,-4.4)} ${P(1.5,-3.4)} C${P(1.2,-2.2)} ${P(-1.5,-1.6)} ${P(-1.5,.2)} `+
+        `C${P(-1.5,1.7)} ${P(.2,2.0)} ${P(.9,1.2)} C${P(1.7,.3)} ${P(1.5,-1.2)} ${P(.3,-1.2)} C${P(-.7,-1.2)} ${P(-.8,.5)} ${P(.0,.8)} C${P(.5,.9)} ${P(.85,.5)} ${P(.7,.05)}`,
+        fill:'none',stroke:'#111','stroke-width':1.7,'stroke-linecap':'round','stroke-linejoin':'round'});
+    pbEl(g,'circle',{cx:x+.55*u,cy:yG+3.15*u,r:.32*u,fill:'#111'});
+}
+
+
+</script>
+</body>
+</html>
