@@ -10,6 +10,7 @@
     <link rel="icon" type="image/png" sizes="192x192" href="icon-192x192.png">
     <meta name="theme-color" content="#10142e">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/tone/14.8.49/Tone.js"></script>
+    <script src="pro-config.js"></script>
     <style>
         @import url('https://cdn.jsdelivr.net/fontsource/fonts/inter@5/latin.css');
 
@@ -190,6 +191,25 @@
             .progress-container { min-width:120px; }
             .opt-toggle { padding:5px 9px; }
         }
+
+        .pro-top { background:rgba(252,173,42,.14); border:1px solid #fcad2a; color:var(--text-main); border-radius:10px; padding:10px 12px; font-weight:700; margin-bottom:10px; }
+        .pro-p { font-size:13px; line-height:1.5; margin:0 0 12px; }
+        .pro-small { font-size:11px; color:var(--text-muted); margin-top:6px; line-height:1.45; }
+        .pro-warn { color:#ff9a6a; font-weight:600; }
+        .pro-ok { font-size:18px; font-weight:800; color:#4ade80; margin-bottom:8px; }
+        .pro-step { display:flex; gap:12px; align-items:flex-start; padding:10px 0; border-top:1px solid var(--border-main); font-size:13px; }
+        .pro-step > span { flex:0 0 26px; height:26px; border-radius:50%; background:#fcad2a; color:#1a1208; font-weight:800; display:flex; align-items:center; justify-content:center; }
+        .pro-step > div { flex:1; min-width:0; }
+        .pro-row { display:flex; gap:8px; flex-wrap:wrap; margin-top:8px; }
+        .pro-btn { background:linear-gradient(135deg,#f2c46b,#c8742a); color:#1a1208; border:none; border-radius:9px; padding:9px 14px; font:700 13px Inter,sans-serif; cursor:pointer; text-decoration:none; display:inline-block; }
+        .pro-btn.sec { background:var(--bg-btn); color:var(--text-main); border:1px solid var(--border-btn); }
+        .pro-btn:disabled { opacity:.6; cursor:wait; }
+        .pro-code { flex:1; min-width:140px; padding:9px 11px; border-radius:9px; border:1px solid var(--border-main); background:var(--bg-btn); color:var(--text-main); font:700 15px monospace; letter-spacing:1px; text-transform:uppercase; }
+        .pro-msg { font-size:12px; margin-top:6px; min-height:16px; color:var(--text-muted); }
+        .pro-msg.err { color:#ff7a7a; font-weight:600; }
+        .hbtn.pro { border-color:#f2c46b; color:#f2c46b; background:rgba(242,196,107,.1); }
+        .hbtn.pro.pro-on { background:linear-gradient(135deg,#f2c46b,#c8742a); color:#1a1208; border-color:transparent; }
+        .plk { font-style:normal; }
     </style>
 </head>
 
@@ -229,6 +249,7 @@
         <button class="hbtn primary" id="hinosBtn" title="Escolher um hino">
             <svg viewBox="0 0 24 24"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg><span>Hinos</span>
         </button>
+        <button class="hbtn pro" id="proBtn" title="Modo Pro: todos os hinos, tom, velocidade e PDF">⭐ Pro</button>
         <button class="hbtn install" id="btnInstall" title="Instalar como aplicativo">
             <svg viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg><span>Instalar</span>
         </button>
@@ -326,6 +347,8 @@
                 </select>
             </div>
             <div class="speed-control" title="Som do violão"><span>Som:</span><select id="vgType" aria-label="Tipo de violão"></select></div>
+            <div class="speed-control" title="Ligado, puxada, slide e vibrato no soprano, só onde é fácil de tocar e soa bem"><span>Adornos:</span>
+                <select id="ornSel" aria-label="Adornos"><option value="1">Ligados</option><option value="0">Desligados</option></select></div>
             <div class="speed-control" title="Mostrar ou esconder a mãozinha no braço do violão"><span>Mão:</span>
                 <select id="handSel" aria-label="Mãozinha"><option value="on">Mostrar</option><option value="off">Ocultar</option></select></div>
         <div class="speed-control" id="modeCtl" style="display:none"><span>Voz:</span><select id="modeSel" aria-label="Voz a executar"></select></div>
@@ -348,6 +371,14 @@
       <input type="search" id="hinoQ" class="hino-search" placeholder="Buscar por número ou título…" autocomplete="off">
       <div id="hinoList"></div>
     </div>
+  </div>
+</div>
+
+<!-- MODO PRO -->
+<div class="pb-modal" id="mPro" hidden>
+  <div class="pb-sheet">
+    <div class="pb-head"><h2>⭐ Modo Pro</h2><button class="pb-x" id="proClose" data-close aria-label="Fechar">✕</button></div>
+    <div class="pb-body" id="proBody"></div>
   </div>
 </div>
 
@@ -765,6 +796,7 @@ let scoreNotes=[]; const scoreChords=[];
 // o que aparece na tela: 'both' (violão + partitura) | 'violao' | 'partitura'
 // formato da partitura: 'both' (notação + tablatura) | 'tab' (só tablatura)
 let VIEW='both', SCMODE='both';
+state.orn=true; try{ state.orn=localStorage.getItem('vgOrn')!=='0'; }catch(e){}
 let vgShowHand=true;   // mostrar a mãozinha esquerda
 try{ vgShowHand=localStorage.getItem('vgHand')!=='0'; }catch(e){}
 try{ VIEW=localStorage.getItem('vgView')||'both'; SCMODE=localStorage.getItem('vgScMode')||'both'; }catch(e){}
@@ -1172,6 +1204,7 @@ function vgPlan(src,t){
     }
     vgReachRepair(out);
     vgOpenStrings(out); vgOpenStrings(out);
+    vgOrnaments(out);
     out.sort((a,b)=>a.startTime-b.startTime);
     return {notes:out,tl,pieces,Vs};
 }
@@ -1211,6 +1244,43 @@ function vgOpenInAssign(items,res){
             if(!busy){ a.s=s; a.fret=0; break; }
         }
     });
+}
+// ---- adornos no soprano: ligado (hammer-on), puxada (pull-off), slide e vibrato — só onde é fácil de tocar e soa bem ----
+function vgOrnaments(notes){
+    if(!state.orn) return;
+    const mel=notes.filter(n=>(n.track|0)===0&&n.fix).sort((a,b)=>a.startTime-b.startTime);
+    const space=state.style==='pro'?8:12;                // segundos mínimos entre dois adornos: poucos e bem escolhidos
+    const others=n=>notes.filter(m=>m!==n&&m.fix&&m.startTime<n.endTime-0.01&&m.endTime>n.startTime+0.01);
+    const easy=(fr,n)=>!vgReachOver([...fr,...others(n).map(m=>m.fix.fret)]);     // a mão esquerda continua alcançando tudo
+    let lastT=-1e9;
+    for(let i=0;i<mel.length;i++){
+        const b=mel[i], a=i>0?mel[i-1]:null, nx=i+1<mel.length?mel[i+1]:null, bd=b.endTime-b.startTime;
+        if(b.startTime-lastT<space) continue;
+        // vibrato: nota longa, apertada, no fim de frase (ou muito longa)
+        const fimFrase=!nx||nx.startTime-b.endTime>0.08;
+        if(b.fix.fret>=1&&b.fix.fret<=12&&((bd>=1.2&&fimFrase)||bd>=2.2)){ b.orn={t:'v'}; lastT=b.startTime; continue; }
+        if(!a||a.fix.s!==b.fix.s) continue;
+        const gap=b.startTime-a.endTime, ad=a.endTime-a.startTime;
+        if(gap>0.06||gap<-0.03||a.orn||(i>1&&mel[i-2].orn)||ad<0.2||bd<0.2) continue;   // só notas seguidas, sem enfileirar adornos
+        const fa=a.fix.fret, fb=b.fix.fret, df=fb-fa;
+        let o=null;
+        if((df===1||df===2)&&fa<=2&&fb<=4&&easy([fa,fb],b)) o={t:'h'};                         // ligado subindo
+        else if((df===-1||df===-2)&&fb<=2&&fa<=4&&easy([fa,fb],b)) o={t:'p'};                  // puxada descendo (até a corda solta)
+        else if(fa>=1&&fb>=1&&Math.abs(df)>=2&&Math.abs(df)<=4&&fa<=9&&fb<=9&&ad>=0.3&&easy([fa,fb],b)) o={t:'s',fm:a.midi};   // slide entre duas casas
+        if(o){ o.pt=a.startTime; o.ps=a.fix.s; b.orn=o; lastT=b.startTime; }
+    }
+}
+// vibrato de verdade: oscila a velocidade de reprodução da amostra da nota (se o instrumento permitir; senão toca normal)
+function vgVibrato(smp,midi,time,dur){
+    try{
+        const arr=smp._activeSources&&smp._activeSources.get(midi), src=arr&&arr[arr.length-1], pr=src&&src.playbackRate;
+        if(!pr) return;
+        const base=pr.value, t0=time+0.3; let n=0;
+        for(let t=t0;t<time+dur&&n<160;t+=0.03,n++){
+            const amp=Math.min(1,(t-t0)/0.45)*0.2;   // sobe devagar até ±20 centésimos de tom
+            pr.setValueAtTime(base*Math.pow(2,amp*Math.sin(2*Math.PI*5.5*(t-t0))/12),t);
+        }
+    }catch(e){}
 }
 function vgOpenStrings(notes){
     // troca casa apertada por corda solta (mesma nota) quando a corda está livre. Se a única coisa que ocupa a corda é a MESMA nota
@@ -1349,10 +1419,133 @@ function loadMidiFile(file){
     reader.readAsArrayBuffer(file);
 }
 
-// ======================== SEM MODO PRO: todos os hinos completos ========================
-const PRO={ok:true};
-function proLimit(){ return Infinity; }
-function proPaywall(){}
+// ======================== MODO PRO (grátis x pro) ========================
+// Grátis: todos os hinos, mas só PRO_CFG.previewSec s de reprodução (qualquer voz); hinos 1..freeHinos completos.
+// Pro: tudo liberado, ativado com um código de uso único (1 código = 1 aparelho) validado numa planilha Google (Apps Script).
+const PRO_CFG=window.PRO_CFG||{app:'app',scriptUrl:'',pixKey:'',pixName:'',pixCity:'',price:0,whatsapp:'',freeHinos:5,previewSec:15};
+const PRO={ok:false,code:'',dev:'',last:0,native:false,devId:''};
+function proSave(){ try{ if(PRO.ok) localStorage.setItem('proState',JSON.stringify({code:PRO.code,dev:PRO.dev,last:PRO.last})); else localStorage.removeItem('proState'); }catch(e){} }
+function proLoad(){ try{ const s=JSON.parse(localStorage.getItem('proState')||'null'); if(s&&s.code){ PRO.ok=true; PRO.code=s.code; PRO.dev=s.dev||''; PRO.last=s.last||0; } }catch(e){} }
+async function proSha(txt){
+    try{ const b=await crypto.subtle.digest('SHA-256',new TextEncoder().encode(txt)); return [...new Uint8Array(b)].slice(0,12).map(x=>x.toString(16).padStart(2,'0')).join(''); }
+    catch(e){ let h=0; for(const ch of txt) h=(h*31+ch.charCodeAt(0))|0; return 'x'+(h>>>0).toString(16); }
+}
+// identificador do aparelho: Android ID (app instalado; sobrevive a desinstalar/limpar dados) ou impressão digital do navegador
+async function proDevice(){
+    if(PRO.devId) return PRO.devId;
+    const C=window.Capacitor;
+    if(C&&C.isNativePlatform&&C.isNativePlatform()){
+        try{ const D=C.Plugins&&C.Plugins.Device; if(D&&D.getId){ const r=await D.getId(); const id=r&&(r.identifier||r.uuid); if(id){ PRO.native=true; return PRO.devId='n-'+id; } } }catch(e){}
+    }
+    let st=''; try{ st=localStorage.getItem('proDev')||''; }catch(e){}
+    if(!st){
+        let gl=''; try{ const c=document.createElement('canvas').getContext('webgl'), x=c&&c.getExtension('WEBGL_debug_renderer_info'); if(x) gl=c.getParameter(x.UNMASKED_RENDERER_WEBGL)+'|'+c.getParameter(x.UNMASKED_VENDOR_WEBGL); }catch(e){}
+        const fp=[navigator.platform,screen.width+'x'+screen.height,window.devicePixelRatio,Intl.DateTimeFormat().resolvedOptions().timeZone,navigator.language,navigator.hardwareConcurrency,navigator.deviceMemory,gl].join('|');
+        st='w-'+await proSha(fp); try{ localStorage.setItem('proDev',st); }catch(e){}
+    }
+    return PRO.devId=st;
+}
+async function proCall(body){
+    if(!/^https?:/.test(PRO_CFG.scriptUrl)) throw new Error('config');
+    const ctl=new AbortController(), to=setTimeout(()=>ctl.abort(),20000);
+    try{
+        const r=await fetch(PRO_CFG.scriptUrl,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify(Object.assign({app:PRO_CFG.app},body)),signal:ctl.signal,redirect:'follow'});
+        return await r.json();
+    } finally { clearTimeout(to); }
+}
+const PRO_MSG={invalido:'Código não encontrado. Confira se digitou certo.',bloqueado:'Este código foi bloqueado. Fale com o suporte.',outro_dispositivo:'Este código já foi usado em outro aparelho. Cada código vale para um único aparelho.',dispositivo_invalido:'Não foi possível identificar este aparelho.',servidor:'Erro no servidor de ativação. Tente de novo em instantes.'};
+async function proActivate(raw){
+    const code=String(raw||'').trim(); if(!code) return {ok:false,msg:'Digite o código.'};
+    let dev; try{ dev=await proDevice(); }catch(e){ return {ok:false,msg:PRO_MSG.dispositivo_invalido}; }
+    let r; try{ r=await proCall({acao:'ativar',codigo:code,dispositivo:dev}); }
+    catch(e){ return {ok:false,msg:e.message==='config'?'O servidor de ativação ainda não foi configurado neste app.':'Sem conexão com o servidor. Conecte-se à internet e tente de novo.'}; }
+    if(r&&r.ok){ PRO.ok=true; PRO.code=code.toUpperCase(); PRO.dev=dev; PRO.last=Date.now(); proSave(); proRefresh(); return {ok:true,status:r.status}; }
+    return {ok:false,msg:PRO_MSG[r&&r.erro]||'Não foi possível ativar.'};
+}
+async function proInit(){
+    proLoad(); proRefresh();
+    try{
+        const dev=await proDevice();
+        if(PRO.ok){
+            if(Date.now()-PRO.last>24*3600e3){          // revalida 1x por dia; sem internet, continua liberado
+                try{
+                    const r=await proCall({acao:'verificar',codigo:PRO.code,dispositivo:PRO.dev||dev});
+                    if(r&&r.ok){ PRO.last=Date.now(); proSave(); }
+                    else if(r&&['bloqueado','outro_dispositivo','invalido'].includes(r.erro)){ PRO.ok=false; proSave(); proRefresh(); toast('O acesso Pro deste aparelho foi encerrado.'); }
+                }catch(e){}
+            }
+        } else if(PRO.native){                           // reinstalou ou limpou os dados: o Android ID é o mesmo → recupera sozinho
+            try{
+                const r=await proCall({acao:'restaurar',dispositivo:dev});
+                if(r&&r.ok&&r.codigo){ PRO.ok=true; PRO.code=r.codigo; PRO.dev=dev; PRO.last=Date.now(); proSave(); proRefresh(); toast('Acesso Pro restaurado neste aparelho ✓','success'); }
+            }catch(e){}
+        }
+    }catch(e){}
+}
+// limite de reprodução do hino atual (Infinity = sem limite)
+function proLimit(){
+    if(PRO.ok) return Infinity;
+    const n=state.hinoN; if(n==null||n<=PRO_CFG.freeHinos) return Infinity;
+    return PRO_CFG.previewSec;
+}
+// ---- Pix "copia e cola" (BR Code estático, com valor) ----
+function proCrc16(s){ let c=0xFFFF; for(let i=0;i<s.length;i++){ c^=s.charCodeAt(i)<<8; for(let j=0;j<8;j++) c=(c&0x8000)?((c<<1)^0x1021)&0xFFFF:(c<<1)&0xFFFF; } return c.toString(16).toUpperCase().padStart(4,'0'); }
+function proPixPayload(){
+    const clean=(t,n)=>String(t||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^A-Za-z0-9 ]/g,'').toUpperCase().slice(0,n);
+    const f=(id,v)=>id+String(v.length).padStart(2,'0')+v;
+    const mai=f('00','br.gov.bcb.pix')+f('01',String(PRO_CFG.pixKey).trim());
+    const amt=PRO_CFG.price>0?Number(PRO_CFG.price).toFixed(2):'';
+    let p=f('00','01')+f('26',mai)+f('52','0000')+f('53','986')+(amt?f('54',amt):'')+f('58','BR')+f('59',clean(PRO_CFG.pixName,25)||'RECEBEDOR')+f('60',clean(PRO_CFG.pixCity,15)||'BRASIL')+f('62',f('05','***'))+'6304';
+    return p+proCrc16(p);
+}
+// ---- interface ----
+function proRefresh(){
+    const b=document.getElementById('proBtn'); if(b){ b.textContent=PRO.ok?'✓ Pro':'⭐ Pro'; b.classList.toggle('pro-on',PRO.ok); }
+    try{ if(typeof renderHinos==='function'&&!document.getElementById('mHinos').hidden) renderHinos(); }catch(e){}
+    try{ updateUI(); }catch(e){}
+    if(!document.getElementById('mPro').hidden) proRender();
+    try{ proLockUI(); }catch(e){}
+}
+function proCopy(txt,okMsg){
+    const done=()=>toast(okMsg,'success');
+    if(navigator.clipboard&&navigator.clipboard.writeText) navigator.clipboard.writeText(txt).then(done,()=>proCopyOld(txt,done)); else proCopyOld(txt,done);
+}
+function proCopyOld(txt,done){ const t=document.createElement('textarea'); t.value=txt; t.style.position='fixed'; t.style.opacity='0'; document.body.appendChild(t); t.select(); try{ document.execCommand('copy'); done(); }catch(e){} t.remove(); }
+let proReason='';
+function proPaywall(reason){ proReason=reason||''; document.getElementById('mPro').hidden=false; document.body.style.overflow='hidden'; proRender(); }
+function proClose(){ document.getElementById('mPro').hidden=true; document.body.style.overflow=''; }
+async function proRender(){
+    const box=document.getElementById('proBody'); if(!box) return;
+    const price=PRO_CFG.price>0?'R$ '+Number(PRO_CFG.price).toFixed(2).replace('.',','):'';
+    if(PRO.ok){
+        const dev=PRO.dev?PRO.dev.slice(0,10)+'…':'';
+        box.innerHTML='<div class="pro-ok">✓ Pro ativo neste aparelho</div><p class="pro-p">Você pode escolher o tom que quiser.</p><p class="pro-p pro-small">Código: <b></b><br>Aparelho: '+dev+'<br>O acesso continua mesmo se você desinstalar o app ou limpar os dados (basta digitar o mesmo código neste aparelho, ou ele é restaurado sozinho no app instalado). O código não funciona em outro aparelho.</p>';
+        box.querySelector('b').textContent=PRO.code; return;
+    }
+    const msgTop=proReason==='pdf'?'Baixar a partitura e a tablatura em PDF é um recurso Pro.':proReason==='speed'?'Mudar a velocidade é um recurso Pro.':proReason==='tom'?'Escolher o tom é um recurso Pro.':proReason==='fim'?'Fim da prévia de '+PRO_CFG.previewSec+' segundos.':proReason==='seek'?'A prévia grátis toca só os primeiros '+PRO_CFG.previewSec+' segundos.':'';
+    const configured=/^https?:/.test(PRO_CFG.scriptUrl)&&PRO_CFG.pixKey&&PRO_CFG.pixKey!=='SUA_CHAVE_PIX';
+    let dev=''; try{ dev=await proDevice(); }catch(e){}
+    box.innerHTML=(msgTop?'<div class="pro-top">'+msgTop+'</div>':'')+
+      '<p class="pro-p"><b>Grátis:</b> todos os hinos completos, com velocidade, PDF e adornos.<br><b>Pro:</b> libera a escolha de tom. Pagamento único via Pix'+(price?' · <b>'+price+'</b>':'')+'.</p>'+
+      (configured?'':'<p class="pro-p pro-warn">Atenção: o dono do app ainda não preencheu o arquivo pro-config.js (chave Pix e endereço do script).</p>')+
+      '<div class="pro-step"><span>1</span><div><b>Pague via Pix</b><div class="pro-row"><button class="pro-btn" id="proCopyPix">Copiar Pix copia e cola</button><button class="pro-btn sec" id="proCopyKey">Copiar chave</button></div><div class="pro-small" id="proKeyTxt"></div></div></div>'+
+      '<div class="pro-step"><span>2</span><div><b>Envie o comprovante</b><div class="pro-row"><a class="pro-btn" id="proWa" target="_blank" rel="noopener">Enviar no WhatsApp</a></div><div class="pro-small">Você recebe um código de uso único.</div></div></div>'+
+      '<div class="pro-step"><span>3</span><div><b>Digite o código</b><div class="pro-row"><input id="proCode" class="pro-code" placeholder="PRO-XXXX-XXXX" autocapitalize="characters" autocomplete="off" spellcheck="false"><button class="pro-btn" id="proGo">Ativar</button></div><div class="pro-msg" id="proMsg"></div></div></div>';
+    document.getElementById('proKeyTxt').textContent=PRO_CFG.pixKey&&PRO_CFG.pixKey!=='SUA_CHAVE_PIX'?'Chave: '+PRO_CFG.pixKey+(PRO_CFG.pixName?' · '+PRO_CFG.pixName:''):'';
+    document.getElementById('proCopyPix').onclick=()=>{ try{ proCopy(proPixPayload(),'Pix copia e cola copiado! Cole no app do seu banco.'); }catch(e){ toast('Erro ao gerar o Pix'); } };
+    document.getElementById('proCopyKey').onclick=()=>proCopy(String(PRO_CFG.pixKey),'Chave Pix copiada!');
+    const txt='Olá! Paguei o modo Pro do '+PRO_CFG.app+' via Pix. Segue o comprovante. (aparelho '+String(dev).slice(0,10)+')';
+    document.getElementById('proWa').href='https://wa.me/'+String(PRO_CFG.whatsapp).replace(/\D/g,'')+'?text='+encodeURIComponent(txt);
+    const go=async()=>{
+        const m=document.getElementById('proMsg'), btn=document.getElementById('proGo'); m.textContent='Verificando…'; m.className='pro-msg'; btn.disabled=true;
+        const r=await proActivate(document.getElementById('proCode').value);
+        btn.disabled=false;
+        if(r.ok){ toast(r.status==='restaurado'?'Acesso Pro restaurado neste aparelho ✓':'Pro ativado! Obrigado pelo apoio ✓','success'); proRender(); }
+        else { m.textContent=r.msg; m.className='pro-msg err'; }
+    };
+    document.getElementById('proGo').onclick=go;
+    document.getElementById('proCode').addEventListener('keydown',e=>{ if(e.key==='Enter') go(); });
+}
 
 // ---- biblioteca de hinos (pasta hinos/ com index.json) ----
 let HINOS=null;
@@ -1364,7 +1557,7 @@ function renderHinos(){
     const list=HINOS.filter(h=>!q||String(h.n).padStart(3,'0').includes(q.replace(/^0+(?=\d)/,''))||String(h.n)===q||normTxt(h.t).includes(q));
     if(!list.length){ box.textContent='Nenhum hino encontrado.'; return; }
     const fr=document.createDocumentFragment();
-    list.forEach(h=>{ const b=document.createElement('button'); b.className='hino-item'; const lock=false; b.innerHTML='<b>'+String(h.n).padStart(3,'0')+'</b><span style="flex:1"></span>'+(lock?'<small style="opacity:.65;white-space:nowrap">🔒 '+PRO_CFG.previewSec+'s</small>':''); b.children[1].textContent=h.t; b.onclick=()=>openHino(h); fr.appendChild(b); });
+    list.forEach(h=>{ const b=document.createElement('button'); b.className='hino-item'; const lock=!PRO.ok&&h.n>PRO_CFG.freeHinos; b.innerHTML='<b>'+String(h.n).padStart(3,'0')+'</b><span style="flex:1"></span>'+(lock?'<small style="opacity:.65;white-space:nowrap">🔒 '+PRO_CFG.previewSec+'s</small>':''); b.children[1].textContent=h.t; b.onclick=()=>openHino(h); fr.appendChild(b); });
     box.appendChild(fr);
 }
 async function openHinos(){
@@ -1380,6 +1573,7 @@ async function openHino(h){
         await vgLoadCifras();
         await loadBuffer(await r.arrayBuffer(),String(h.n).padStart(3,'0')+' – '+h.t,h.n);
         state.hinoN=h.n; updateUI();
+        if(proLimit()<Infinity) toast('Prévia de '+PRO_CFG.previewSec+' s · hinos 1 a '+PRO_CFG.freeHinos+' são completos · toque em ⭐ Pro para liberar tudo');
     }catch(e){ loadingOverlay.classList.remove('active'); toast('Erro: '+e.message); }
 }
 
@@ -1438,10 +1632,19 @@ async function startPlayback(){
         if(t0>=proLimit()) return;
         const tStart=(t0-offset)/spd;
         const dur=Math.max(0.05, remain/spd);
+        const orn=note.orn;
         Tone.Transport.schedule(time=>{
             if(!state.isPlaying||!state.sampler||!state.samplerReady) return;
-            try { const smp=(note.bg&&BG.smp)?BG.smp:state.sampler; smp.triggerAttackRelease(nname(note.midi), dur, time, note.velocity); } catch(e){}
+            try { const smp=(note.bg&&BG.smp)?BG.smp:state.sampler; const vel=(orn&&(orn.t==='h'||orn.t==='p'))?Math.max(.2,note.velocity*.6):note.velocity;   // ligado/puxada: sem palhetada
+                smp.triggerAttackRelease(nname(note.midi), dur, time, vel);
+                if(orn&&orn.t==='v') vgVibrato(smp,note.midi,time,dur); } catch(e){}
         }, tStart);
+        if(orn&&orn.t==='s'&&orn.fm!=null&&t0===note.startTime){   // slide: notinhas bem curtas e suaves entre as duas casas
+            const dir=note.midi>orn.fm?1:-1, mids=[]; for(let m=orn.fm+dir;m!==note.midi;m+=dir) mids.push(m);
+            const gd=Math.min(0.05,0.14/Math.max(1,mids.length)), g0=tStart-mids.length*gd;
+            if(g0>=0) mids.forEach((m,k)=>Tone.Transport.schedule(time=>{ if(!state.isPlaying||!state.sampler||!state.samplerReady) return;
+                try{ state.sampler.triggerAttackRelease(nname(m), gd*1.3, time, Math.max(.15,note.velocity*.45)); }catch(e){} }, g0+k*gd));
+        }
     });
 
     Tone.Transport.start('+0.05');
@@ -2063,11 +2266,21 @@ rewindBtn.addEventListener('click',()=>{ if(state.isPlaying) stopPlayback(); els
 function handleSeek(cx){
     if(!state.midiLoaded) return;
     const r=progressBar.getBoundingClientRect();
-    seekTo(Math.max(0,Math.min(1,(cx-r.left)/r.width))*state.duration);
+    seekTo(Math.max(0,Math.min(1,(cx-r.left)/r.width))*Math.min(state.duration,proLimit()));
 }
 progressBar.addEventListener('click',e=>handleSeek(e.clientX));
 progressBar.addEventListener('touchstart',e=>{ e.preventDefault(); handleSeek(e.touches[0].clientX); },{passive:false});
 
+// travas do modo grátis: velocidade e tom abrem o aviso do Pro em vez de abrir a lista
+function proGate(sel,reason){
+    const lock=e=>{ if(PRO.ok) return; e.preventDefault(); sel.blur(); proPaywall(reason); };
+    sel.addEventListener('mousedown',lock); sel.addEventListener('touchstart',lock,{passive:false});
+    sel.addEventListener('keydown',e=>{ if(e.key!=='Tab') lock(e); });
+}
+proGate(document.getElementById('keySel'),'tom');
+function proLockUI(){
+    document.querySelectorAll('.plk').forEach(x=>{ x.textContent=PRO.ok?'':' 🔒'; });
+}
 speedSelect.addEventListener('change',e=>{
     state.speed=parseFloat(e.target.value);
     if(state.isPlaying){ const cp=state.currentTime; pausePlayback(); state.pausedAt=cp; startPlayback(); }
@@ -2101,6 +2314,9 @@ scSel.addEventListener('change',()=>{ SCMODE=scSel.value; try{ localStorage.setI
     sel.addEventListener('change',()=>{ VG_TYPE=sel.value; try{ localStorage.setItem('vgType',VG_TYPE); }catch(e){} vgSwitchSampler(); });
 })();
 document.getElementById('pdfBtn').addEventListener('click',()=>exportPdf());
+// adornos no soprano
+const ornSel=document.getElementById('ornSel'); ornSel.value=state.orn?'1':'0';
+ornSel.addEventListener('change',async()=>{ state.orn=ornSel.value==='1'; try{ localStorage.setItem('vgOrn',state.orn?'1':'0'); }catch(e){} if(state.midiLoaded) await vgRebuild(true); });
 // mostrar / ocultar a mãozinha
 const handSel=document.getElementById('handSel');
 handSel.value=vgShowHand?'on':'off';
@@ -2117,6 +2333,7 @@ function closeModals(){ document.querySelectorAll('.pb-modal').forEach(m=>m.hidd
 document.querySelectorAll('.pb-modal').forEach(m=>m.addEventListener('click',e=>{ if(e.target===m||e.target.hasAttribute('data-close')) closeModals(); }));
 document.addEventListener('keydown',e=>{ if(e.key==='Escape'){ closeModals(); document.getElementById('pixModal').classList.add('hidden'); } });
 document.getElementById('hinosBtn').addEventListener('click',openHinos);
+document.getElementById('proBtn').addEventListener('click',()=>proPaywall(''));
 document.getElementById('hinoQ').addEventListener('input',renderHinos);
 
 // ======================== SERVICE WORKER ========================
@@ -2139,6 +2356,7 @@ if('serviceWorker' in navigator){
 // ======================== INIT ========================
 resizeCanvases();
 try{ new ResizeObserver(()=>{ resizeCanvases(); if(state.midiLoaded) drawScene(); }).observe(mainContainer); }catch(e){}
+proInit(); proLockUI();
 initSampler(); // começa a baixar as amostras do violão em segundo plano
 
 // ======================== PIX ========================
@@ -2205,6 +2423,7 @@ function playerScoreNotes(src){
             velocity:Math.max(1,Math.min(127,Math.round((n.velocity||.7)*127))), voice:n.track|0,
             accidental:0,dotted:false,dotted2:false,tied:false,articulations:[],t0:n.startTime,t1:n.endTime};
         if(n.fix&&n.fix.s!=null){ o.ts=n.fix.s; o.tf=n.fix.fret; }
+        if(n.orn) o.orn=n.orn;
         return o;
     });
 }
@@ -2332,6 +2551,7 @@ async function exportPdf(){
         const chordsOn=mode==='tab'&&(window.vgChordTL||[]).length>0;
         const sd=withPlayerSource(()=>pbBuildScore({title,voice:'all',ts:playerTs(),mode,chords:chordsOn}),state.notes);
         if(chordsOn) liveChordsDraw(sd.svgs,sd.lay,liveMapFrom(playerScoreNotes(state.notes)));
+        liveOrnDraw(sd.svgs,sd.heads);
         const pgs=[]; for(const svg of sd.svgs) pgs.push(await svgToJpeg(svg,sd.W,sd.H,2.6));
         const nm=(title.replace(/[\\/:*?"<>|]+/g,' ').trim()||'hino')+(mode==='tab'?' - tablatura':' - partitura')+'.pdf';
         const a=document.createElement('a'); a.href=URL.createObjectURL(makePdf(pgs)); a.download=nm; document.body.appendChild(a); a.click();
@@ -2339,6 +2559,31 @@ async function exportPdf(){
         toast('PDF gerado: '+nm,'success');
     }catch(e){ console.error(e); toast('Não foi possível gerar o PDF'); }
     loadingOverlay.classList.remove('active');
+}
+// ---- marcas dos adornos na tablatura: ligado (H), puxada (P), slide (sl.) e vibrato (onda) ----
+function liveOrnDraw(svgs,heads){
+    const INK='#111', byKey=new Map(), gs=new Map();
+    heads.forEach(h=>{ if(h.ts!=null&&h.tx!=null) byKey.set(h.ts+'|'+Math.round(h.u*1000),h); });
+    const grp=svg=>{ let g=gs.get(svg); if(!g){ g=document.createElementNS(PB_NS,'g'); svg.insertBefore(g,svg._mt||null); gs.set(svg,g); } return g; };
+    const txt=(g,x,y,t)=>pbEl(g,'text',{x,y,'text-anchor':'middle','font-family':'Arial,sans-serif','font-size':7.5,'font-weight':'bold','font-style':'italic',fill:INK},t);
+    heads.forEach(h=>{
+        const o=h.orn; if(!o||h.tx==null||!h.el.ownerSVGElement) return;
+        const g=grp(h.el.ownerSVGElement);
+        if(o.t==='v'){
+            pbEl(g,'path',{d:'M'+(h.tx+7)+' '+(h.ty-9)+' q 2.5 -4 5 0 t 5 0 t 5 0 t 5 0 t 5 0 t 5 0',stroke:INK,'stroke-width':1,fill:'none'}); return;
+        }
+        const p=o.pu!=null?byKey.get(o.ps+'|'+Math.round(o.pu*1000)):null, lab=o.t==='h'?'H':o.t==='p'?'P':'sl.';
+        if(!p||p.el.ownerSVGElement!==h.el.ownerSVGElement){ txt(g,h.tx,h.ty-9,lab); return; }
+        const x1=p.tx, x2=h.tx, mid=(x1+x2)/2;
+        if(o.t==='s'){
+            const up=(parseInt(h.el.textContent)||0)>(parseInt(p.el.textContent)||0);
+            pbEl(g,'line',{x1:x1+6,y1:h.ty+(up?3:-3),x2:x2-6,y2:h.ty+(up?-3:3),stroke:INK,'stroke-width':1.1});
+            txt(g,mid,h.ty-9,lab);
+        } else {
+            pbEl(g,'path',{d:'M'+(x1+3)+' '+(h.ty-7)+' Q '+mid+' '+(h.ty-17)+' '+(x2-3)+' '+(h.ty-7),stroke:INK,'stroke-width':1,fill:'none'});
+            txt(g,mid,h.ty-14,lab);
+        }
+    });
 }
 function liveBuild(){
     LIVE.svgs=[]; LIVE.lay=[]; LIVE.heads=[]; LIVE.map=[]; LIVE.act=[]; LIVE.blocks=[]; LIVE.sysBlk=[]; LIVE.shown=null; LIVE.blk=-1; LIVE.ok=false;
@@ -2359,6 +2604,7 @@ function liveBuild(){
             const ln=document.createElementNS(PB_NS,'line'); ln.setAttribute('stroke',LIVE_COL); ln.setAttribute('stroke-width','2.4'); ln.setAttribute('opacity','.8'); ln.setAttribute('stroke-linecap','round'); ln.style.display='none'; svg.append(ln); svg._cur=ln;
         });
         if(LIVE.chordsOn) liveChordsDraw();
+        liveOrnDraw(LIVE.svgs,LIVE.heads);
         // blocos de 2 a 3 sistemas (linhas) por vez, o que couber na moldura 16:9
         const BH=LIVE.W*9/16-4, lay=LIVE.lay;
         for(let i=0;i<lay.length;){
@@ -2812,6 +3058,9 @@ function pbBuildScore(opts){
         if(MODE!=='nota'){
             const ttop=MODE==='tab'?y0+T0:tops[0]+4*SP+sys.nExtra, tb=ttop+TABH;
             const sY=si_=>ttop+(5-si_)*TSP, INKT='#111';
+            const ORNMAP=new Map(); { const idx=new Map(); scoreNotes.forEach(n=>{ if(n.ts!=null) idx.set(n.ts+'|'+Math.round(n.t0*1000),n); });
+                scoreNotes.forEach(n=>{ if(n.orn&&n.ts!=null){ const pv=n.orn.pt!=null?idx.get(n.orn.ps+'|'+Math.round(n.orn.pt*1000)):null;
+                    ORNMAP.set(n.ts+'|'+Math.round((n.beat-1)*8*1000),{t:n.orn.t,ps:n.orn.ps,pu:pv?(pv.beat-1)*8:null}); } }); }
             for(let i=0;i<6;i++) pbEl(pgReal,'line',{x1:left,y1:ttop+i*TSP,x2:xEnd,y2:ttop+i*TSP,stroke:INKT,'stroke-width':1});
             pbEl(pgReal,'line',{x1:left,y1:ttop,x2:left,y2:tb,stroke:INKT,'stroke-width':1.6});
             ['T','A','B'].forEach((c,i)=>pbEl(pgReal,'text',{x:left+16,y:ttop+TSP*(1.75+i*1.5)+4,'text-anchor':'middle','font-family':'Arial,Helvetica,sans-serif','font-size':13,'font-weight':'bold',fill:INKT},c));
@@ -2829,7 +3078,7 @@ function pbBuildScore(opts){
                     const a=gA.get(h.x)||gCands(h.midi)[0], y=sY(a.s), t=String(a.fret), w=t.length*6.2+3;
                     pbEl(pgReal,'rect',{x:cx-w/2,y:y-5.2,width:w,height:10.4,fill:'#fff'});
                     const tel=pbEl(pgReal,'text',{x:cx,y:y+3.9,'text-anchor':'middle','font-family':'Arial,Helvetica,sans-serif','font-size':11,'font-weight':'bold',fill:INKT},t);
-                    heads.push({el:tel,k:'fill',u:ev.pos,e:ev.pos+ev.len,voice:0});
+                    heads.push({el:tel,k:'fill',u:ev.pos,e:ev.pos+ev.len,voice:0,tx:cx,ty:y,ts:a.s,orn:ORNMAP.get(a.s+'|'+Math.round(ev.pos*1000))});
                 });
                 if(MODE==='tab'){
                     const ai=atkList.indexOf(ev), nx_=ai>=0&&ai<atkList.length-1?atkList[ai+1].pos:total, mEnd=(ev.m+1)*M;
