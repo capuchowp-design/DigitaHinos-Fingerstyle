@@ -1270,17 +1270,28 @@ function vgOrnaments(notes){
         if(o){ o.pt=a.startTime; o.ps=a.fix.s; b.orn=o; lastT=b.startTime; }
     }
 }
-// vibrato de verdade: oscila a velocidade de reprodução da amostra da nota (se o instrumento permitir; senão toca normal)
+// ---- som dos adornos: dobra a altura da própria nota que está soando (como a corda de verdade) ----
+function vgSrc(smp,midi){ const arr=smp._activeSources&&smp._activeSources.get(midi); return arr&&arr[arr.length-1]; }
+// vibrato: oscila a altura da nota longa (±38 centésimos de tom, 5,8 vezes por segundo, entrando devagar)
 function vgVibrato(smp,midi,time,dur){
     try{
-        const arr=smp._activeSources&&smp._activeSources.get(midi), src=arr&&arr[arr.length-1], pr=src&&src.playbackRate;
-        if(!pr) return;
-        const base=pr.value, t0=time+0.3; let n=0;
-        for(let t=t0;t<time+dur&&n<160;t+=0.03,n++){
-            const amp=Math.min(1,(t-t0)/0.45)*0.2;   // sobe devagar até ±20 centésimos de tom
-            pr.setValueAtTime(base*Math.pow(2,amp*Math.sin(2*Math.PI*5.5*(t-t0))/12),t);
+        const pr=(vgSrc(smp,midi)||{}).playbackRate; if(!pr) return;
+        const base=pr.value, t0=time+0.25; let n=0;
+        for(let t=t0;t<time+dur&&n<220;t+=0.025,n++){
+            const amp=Math.min(1,(t-t0)/0.35)*0.38;
+            pr.setValueAtTime(base*Math.pow(2,amp*Math.sin(2*Math.PI*5.8*(t-t0))/12),t);
         }
     }catch(e){}
+}
+// ligado / puxada: a nota que já soa muda de altura no instante da segunda nota (sem palhetar de novo); slide: desliza até lá
+function vgBend(smp,midi,time,tb,semis,kind){
+    try{
+        const pr=(vgSrc(smp,midi)||{}).playbackRate; if(!pr) return false;
+        const base=pr.value, to=base*Math.pow(2,semis/12);
+        if(kind==='s'){ pr.setValueAtTime(base,Math.max(time,tb-0.16)); pr.exponentialRampToValueAtTime(to,tb); }
+        else { pr.setValueAtTime(base,Math.max(time,tb-0.002)); pr.linearRampToValueAtTime(to,tb+0.012); }
+        return true;
+    }catch(e){ return false; }
 }
 function vgOpenStrings(notes){
     // troca casa apertada por corda solta (mesma nota) quando a corda está livre. Se a única coisa que ocupa a corda é a MESMA nota
@@ -1621,6 +1632,9 @@ async function startPlayback(){
     const offset=state.pausedAt;
     const spd=state.speed;
 
+    // adornos em par (ligado / puxada / slide): a 1ª nota continua soando e muda de altura quando chega a 2ª
+    const ornNext=new Map(); state.notes.forEach(n=>{ const o=n.orn; if(o&&(o.t==='h'||o.t==='p'||o.t==='s')&&o.pt!=null){
+        const a=state.notes.find(m=>m!==n&&(m.track|0)===0&&m.fix&&m.fix.s===o.ps&&Math.abs(m.startTime-o.pt)<0.003); if(a) ornNext.set(a,n); } });
     // Schedule all notes relative to Transport start
     state.notes.forEach(note=>{
         let t0=note.startTime, remain=note.duration;
@@ -1632,19 +1646,16 @@ async function startPlayback(){
         if(t0>=proLimit()) return;
         const tStart=(t0-offset)/spd;
         const dur=Math.max(0.05, remain/spd);
-        const orn=note.orn;
+        const orn=note.orn, nxt=ornNext.get(note);
+        let dur2=dur; if(nxt&&t0===note.startTime&&nxt.startTime>=offset&&nxt.startTime<proLimit()) dur2=Math.max(dur,(nxt.endTime-note.startTime)/spd);
         Tone.Transport.schedule(time=>{
             if(!state.isPlaying||!state.sampler||!state.samplerReady) return;
-            try { const smp=(note.bg&&BG.smp)?BG.smp:state.sampler; const vel=(orn&&(orn.t==='h'||orn.t==='p'))?Math.max(.2,note.velocity*.6):note.velocity;   // ligado/puxada: sem palhetada
-                smp.triggerAttackRelease(nname(note.midi), dur, time, vel);
-                if(orn&&orn.t==='v') vgVibrato(smp,note.midi,time,dur); } catch(e){}
+            try { const smp=(note.bg&&BG.smp)?BG.smp:state.sampler;
+                const vel=orn&&(orn.t==='h'||orn.t==='p')?Math.max(.15,note.velocity*.5):orn&&orn.t==='s'?Math.max(.15,note.velocity*.55):note.velocity;   // 2ª nota do par: bem suave
+                smp.triggerAttackRelease(nname(note.midi), dur2, time, vel);
+                if(orn&&orn.t==='v') vgVibrato(smp,note.midi,time,dur2);
+                if(nxt&&dur2>dur) vgBend(smp,note.midi,time,time+(nxt.startTime-note.startTime)/spd,nxt.midi-note.midi,nxt.orn.t); } catch(e){}
         }, tStart);
-        if(orn&&orn.t==='s'&&orn.fm!=null&&t0===note.startTime){   // slide: notinhas bem curtas e suaves entre as duas casas
-            const dir=note.midi>orn.fm?1:-1, mids=[]; for(let m=orn.fm+dir;m!==note.midi;m+=dir) mids.push(m);
-            const gd=Math.min(0.05,0.14/Math.max(1,mids.length)), g0=tStart-mids.length*gd;
-            if(g0>=0) mids.forEach((m,k)=>Tone.Transport.schedule(time=>{ if(!state.isPlaying||!state.sampler||!state.samplerReady) return;
-                try{ state.sampler.triggerAttackRelease(nname(m), gd*1.3, time, Math.max(.15,note.velocity*.45)); }catch(e){} }, g0+k*gd));
-        }
     });
 
     Tone.Transport.start('+0.05');
@@ -3063,6 +3074,7 @@ function pbBuildScore(opts){
                     ORNMAP.set(n.ts+'|'+Math.round((n.beat-1)*8*1000),{t:n.orn.t,ps:n.orn.ps,pu:pv?(pv.beat-1)*8:null}); } }); }
             for(let i=0;i<6;i++) pbEl(pgReal,'line',{x1:left,y1:ttop+i*TSP,x2:xEnd,y2:ttop+i*TSP,stroke:INKT,'stroke-width':1});
             pbEl(pgReal,'line',{x1:left,y1:ttop,x2:left,y2:tb,stroke:INKT,'stroke-width':1.6});
+            ['e','B','G','D','A','E'].forEach((c,i)=>pbEl(pgReal,'text',{x:left-5,y:ttop+i*TSP+3.6,'text-anchor':'end','font-family':'Arial,Helvetica,sans-serif','font-size':9,'font-weight':'bold',fill:'#555'},c));   // nomes das cordas
             ['T','A','B'].forEach((c,i)=>pbEl(pgReal,'text',{x:left+16,y:ttop+TSP*(1.75+i*1.5)+4,'text-anchor':'middle','font-family':'Arial,Helvetica,sans-serif','font-size':13,'font-weight':'bold',fill:INKT},c));
             if(MODE==='tab') pbEl(pgReal,'text',{x:left+2,y:ttop-10,'font-family':'Arial,sans-serif','font-size':10,'font-style':'italic',fill:'#555'},String(sys.ms[0].m+1));
             barX.forEach((bx,i)=>{
