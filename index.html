@@ -3205,11 +3205,15 @@ function pbTrebleClef(g,x,yG,SP){
 }
 </script>
 <script>
-// ===== GRAVAÇÃO NATIVA EM ALTA DEFINIÇÃO (DISPLAY MEDIA) =====
+// ===== GRAVAÇÃO LOCAL INTELIGENTE EM HD (COM SUPORTE A SVG E VIOLÃO) =====
 let mediaRecorder = null;
 let recordedChunks = [];
 let isRecording = false;
-let displayStream = null;
+let renderInterval = null;
+
+// Cache para otimizar a renderização da partitura SVG sem travar
+let cachedScoreImg = null;
+let lastSvgContent = "";
 
 const btnRecord = document.getElementById('btnRecord');
 const recText = document.getElementById('recText');
@@ -3217,53 +3221,58 @@ const recText = document.getElementById('recText');
 if (btnRecord) {
     btnRecord.addEventListener('click', async () => {
         if (!isRecording) {
-            startHDRecording();
+            startPreciseCanvasRecording();
         } else {
-            stopHDRecording();
+            stopPreciseCanvasRecording();
         }
     });
 }
 
-async function startHDRecording() {
+async function startPreciseCanvasRecording() {
     try {
         recordedChunks = [];
+        const pianoCanvas = document.getElementById('pianoCanvas');
+        const scorePaper = document.getElementById('scorePaper');
+        const canvasContainer = document.getElementById('canvasContainer');
+        const guitarPane = document.getElementById('guitarPane');
 
-        // Pede para o navegador capturar a aba atual com máxima qualidade de vídeo e áudio do sistema/app
-        displayStream = await navigator.mediaDevices.getDisplayMedia({
-            video: { 
-                mediaSource: "browser",
-                width: { ideal: 1920 },
-                height: { ideal: 1080 },
-                frameRate: { ideal: 60 }
-            },
-            audio: true
-        });
+        if (!pianoCanvas) {
+            alert("Elemento do violão não encontrado!");
+            return;
+        }
 
-        // Adiciona o áudio do Tone.js se disponível para garantir o som do hino sincronizado
+        // Cria o canvas de gravação offscreen em Alta Definição (Full HD 1920x1080 para máxima nitidez)
+        const recordCanvas = document.createElement('canvas');
+        const ctx = recordCanvas.getContext('2d');
+        recordCanvas.width = 1920;
+        recordCanvas.height = 1080;
+
+        const stream = recordCanvas.captureStream(60); // 60 FPS fluidos
+
+        // Adiciona o áudio do Tone.js para sair sincronizado no vídeo
         if (Tone && Tone.getDestination) {
             try {
                 const dest = Tone.context.createMediaStreamDestination();
                 Tone.getDestination().connect(dest);
                 const audioTrack = dest.stream.getAudioTracks()[0];
                 if (audioTrack) {
-                    displayStream.addTrack(audioTrack);
+                    stream.addTrack(audioTrack);
                 }
             } catch (e) {
-                console.warn("Áudio extra do Tone.js não adicionado:", e);
+                console.warn("Áudio não integrado:", e);
             }
         }
 
-        // Configura alta qualidade de bitrate para o WebM não ficar pixelado
         const options = { 
             mimeType: 'video/webm; codecs=vp9,opus',
-            videoBitsPerSecond: 5000000 // 5 Mbps para alta nitidez na partitura e no violão
+            videoBitsPerSecond: 8000000 // 8 Mbps para qualidade de imagem excelente
         };
         
         if (!MediaRecorder.isTypeSupported(options.mimeType)) {
             options.mimeType = 'video/webm';
         }
 
-        mediaRecorder = new MediaRecorder(displayStream, options);
+        mediaRecorder = new MediaRecorder(stream, options);
 
         mediaRecorder.ondataavailable = (event) => {
             if (event.data && event.data.size > 0) {
@@ -3272,9 +3281,7 @@ async function startHDRecording() {
         };
 
         mediaRecorder.onstop = () => {
-            // Para todas as trilhas do stream de captura
-            displayStream.getTracks().forEach(track => track.stop());
-
+            clearInterval(renderInterval);
             const blob = new Blob(recordedChunks, { type: 'video/webm' });
             const url = URL.createObjectURL(blob);
             
@@ -3294,35 +3301,76 @@ async function startHDRecording() {
             recText.textContent = "Gravar";
             btnRecord.style.borderColor = "";
             isRecording = false;
-            toast("Vídeo HD gravado com sucesso!", "success");
+            toast("Vídeo gravado com alta qualidade!", "success");
         };
 
-        // Caso o usuário feche a partilha de tela pelo painel nativo do navegador
-        displayStream.getVideoTracks()[0].onended = () => {
-            if (isRecording) {
-                stopHDRecording();
+        // Loop de alta performance para desenhar exatamente a View selecionada
+        renderInterval = setInterval(() => {
+            // Fundo padrão escuro do palco
+            ctx.fillStyle = "#0d1029";
+            ctx.fillRect(0, 0, recordCanvas.width, recordCanvas.height);
+
+            const showScore = (VIEW === 'both' || VIEW === 'partitura') && canvasContainer.style.display !== 'none';
+            const showGuitar = (VIEW === 'both' || VIEW === 'violao') && guitarPane.style.display !== 'none';
+
+            // 1. Renderiza a Partitura (SVG com todas as notas e textos nítidos)
+            if (showScore && scorePaper) {
+                const svgElement = scorePaper.querySelector('svg');
+                if (svgElement) {
+                    const svgData = new XMLSerializer().serializeToString(svgElement);
+                    // Atualiza a imagem em cache apenas se a partitura mudar
+                    if (svgData !== lastSvgContent) {
+                        lastSvgContent = svgData;
+                        const svg64 = btoa(unescape(encodeURIComponent(svgData)));
+                        const img = new Image();
+                        img.onload = () => { cachedScoreImg = img; };
+                        img.src = 'data:image/svg+xml;base64,' + svg64;
+                    }
+                }
+
+                // Desenha o fundo da partitura (papel)
+                ctx.fillStyle = "#f7f0df";
+                const scoreHeight = VIEW === 'both' ? recordCanvas.height * 0.48 : recordCanvas.height - 120;
+                ctx.fillRect(60, 60, recordCanvas.width - 120, scoreHeight);
+
+                // Desenha a imagem nítida da partitura por cima
+                if (cachedScoreImg) {
+                    ctx.drawImage(cachedScoreImg, 80, 80, recordCanvas.width - 160, scoreHeight - 40);
+                }
             }
-        };
+
+            // 2. Renderiza o Violão (Canvas animado com alta nitidez)
+            if (showGuitar && pianoCanvas.width > 0 && pianoCanvas.height > 0) {
+                if (VIEW === 'violao') {
+                    // Ocupa a tela inteira se for só o violão
+                    ctx.drawImage(pianoCanvas, 0, 0, recordCanvas.width, recordCanvas.height);
+                } else if (VIEW === 'both') {
+                    // Posiciona na metade inferior quando for ambos
+                    const guitarHeight = recordCanvas.height * 0.48;
+                    const guitarTop = recordCanvas.height * 0.50;
+                    ctx.drawImage(pianoCanvas, 60, guitarTop, recordCanvas.width - 120, guitarHeight);
+                }
+            }
+
+        }, 1000 / 60); // 60 quadros por segundo
 
         mediaRecorder.start();
         isRecording = true;
         btnRecord.classList.add('active');
         btnRecord.style.borderColor = "#ff4f8b";
         recText.textContent = "Parar & Baixar";
-        toast("🔴 Gravando tela em HD (Selecione esta aba)...", "success");
+        toast(`🔴 Gravando área exata [${VIEW}] em HD...`, "success");
 
     } catch (err) {
-        console.error("Erro ao iniciar gravação em HD:", err);
-        if (err.name !== 'NotAllowedError') {
-            alert("Erro ao iniciar gravação: " + err.message);
-        }
+        console.error("Erro ao gravar tela:", err);
+        alert("Erro ao gravar: " + err.message);
         isRecording = false;
         btnRecord.classList.remove('active');
         recText.textContent = "Gravar";
     }
 }
 
-function stopHDRecording() {
+function stopPreciseCanvasRecording() {
     if (mediaRecorder && mediaRecorder.state !== "inactive") {
         mediaRecorder.stop();
     }
