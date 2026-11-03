@@ -1,7 +1,7 @@
 // ===== CONFIGURAÇÃO DO MODO PRO — edite só este arquivo =====
 window.PRO_CFG = {
   app: 'fingerstyle',                           // nome do app (aparece na planilha)
-  scriptUrl: 'https://script.google.com/macros/s/AKfycbySdNx-ymfoY8aBpAalnZ44q3xyeuf0ZBTzOJVzteZfeuf_oahTfDWqYmR8sNRv8-hD/exec',
+  scriptUrl: 'https://script.google.com/macros/library/d/185f0sQTUDXHzZJRvvUgZhvry5YNHYMQhElWCQAgwF-Lj7aN5gLebY0AZ/2',
   pixKey: 'meuidwp@duck.com',                   // chave Pix (e-mail)
   pixName: 'WESLEY PHILIP A CAPUCHO',           // nome do recebedor (até 25 letras, sem acento)
   pixCity: 'SAO SEBASTIAO',                     // cidade (até 15 letras, sem acento)
