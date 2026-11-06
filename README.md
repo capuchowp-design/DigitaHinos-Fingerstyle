@@ -16,3 +16,6 @@ O workflow `.github/workflows/build-apk.yml` gera o APK (Capacitor).
 
 ## Adornos
 No soprano o app coloca, em poucos pontos bem escolhidos e fáceis de tocar: ligado (H), puxada (P), slide (sl.) e vibrato (onda). Aparecem na tablatura/PDF e no som (o ligado e a puxada mudam a altura da nota que já soa, o slide desliza entre as casas e o vibrato oscila a altura); podem ser desligados em ⚙ Opções → Adornos.
+
+## Harmonia Cantoral (livro)
+O arquivo `hinos/cifras.json` traz as cifras do Hinário 5 (CCB) já alinhadas a compasso e tempo de cada hino; o app transpõe sozinho para o tom escolhido. Hinos que não estão no arquivo usam a harmonia Simples quando se escolhe "Cantoral". Lista dos hinos sem cifra: `hinos/SEM-CIFRA.txt`.
